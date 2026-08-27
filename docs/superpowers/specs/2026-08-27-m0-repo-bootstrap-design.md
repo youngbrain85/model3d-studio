@@ -57,10 +57,29 @@ M0는 기능을 만들지 않는다. **뒤 마일스톤이 딛고 설 바닥이 
 |---|---|
 | node 22.16 / npm 10.9 | 있음 |
 | gh 2.90 | 있음 |
-| python | 기본이 Anaconda 3.9 — `py -3.12` / `py -3.14` 별도 존재 |
+| python | 기본이 Anaconda 3.9 — `py -3.12`(3.12.6) / `py -3.14` 별도 존재 |
 | uv · supabase CLI · docker | **없음** |
+| make · mingw32-make | **없음** |
 
-Docker가 없어 `supabase start`(로컬 스택)는 불가. 마이그레이션 경로를 이에 맞춰 설계한다.
+- Docker가 없어 `supabase start`(로컬 스택)는 불가. 마이그레이션 경로를 이에 맞춰 설계한다.
+- **`make`가 없어 Makefile을 쓰지 않는다.** `m3d` CLI 자체가 태스크 러너 역할을 하고,
+  venv 생성처럼 CLI보다 앞서는 단계만 `scripts/bootstrap.ps1`이 맡는다
+  (PowerShell이 이 환경의 주 셸이다).
+- Windows 콘솔이 기본 cp949라 한국어 출력이 깨진다 → 파이썬 진입점은 `PYTHONUTF8=1`
+  전제로 실행한다(부트스트랩 스크립트가 설정).
+
+### 1-4. 파일명 규칙 (전수 검증 완료)
+
+`collect`가 통째로 의존하므로 50행 전수로 확인했다. 여분·누락 0건.
+
+| 대상 | 규칙 | 검증 |
+|---|---|---|
+| DXF | `{도면번호}.dxf` | 50/50 존재 |
+| PNG (page_count = 1) | `{ord}_{name}.png` — **접미사 없음** | 61/61 일치 |
+| PNG (page_count > 1) | `{ord}_{name}_p{i}.png` (i = 1..n) | (동상) |
+| `_manifest.txt` | UTF-8, BOM 없음, 탭 4필드 | 50행 파싱 성공 |
+
+여기서 `name` 은 `_manifest.txt` 3번째 필드 전체(`{도면번호}_{제목}`)다.
 
 ## 2. 확정된 결정
 
@@ -76,7 +95,7 @@ Docker가 없어 `supabase start`(로컬 스택)는 불가. 마이그레이션 �
 
 ```
 model3d-studio/
-├─ CLAUDE.md  README.md  Makefile  .gitignore  .env.example
+├─ CLAUDE.md  README.md  .gitignore  .env.example
 ├─ docs/
 │  ├─ 모델링규칙_지식베이스_v0.md          # 정본 (기존)
 │  ├─ 아키텍처_MCP구성_v0.md               # 정본 (기존)
@@ -109,6 +128,8 @@ model3d-studio/
 │  ├─ fixtures/ab1-p4p5/                   # 커밋 — 정답지 55KB (§1-2)
 │  └─ samples/ab1-p4p5/{dxf,pdf,png}/      # gitignore — 460MB
 └─ scripts/
+   ├─ bootstrap.ps1                        # venv 생성·설치 (m3d 이전 단계)
+   └─ verify-m0.ps1                       # §9의 1~7 일괄 실행
 ```
 
 `contracts/`는 npm 패키지가 아니라 **빌드 도구 없는 파일 디렉터리**다. `db.types.ts`와
@@ -328,7 +349,7 @@ RLS 정책이 행을 걸러 빈 배열이 돌아온다. 따라서 헬스 화면�
 
 | # | 명령 | 기대 결과 |
 |---|---|---|
-| 1 | `make doctor` | py3.12 venv, **필수 6종 FAIL 0** + 선택 1종 결과 기록 |
+| 1 | `m3d doctor` | py3.12 venv, **필수 6종 FAIL 0** + 선택 결과 기록 |
 | 2 | `m3d samples collect` | 112파일 복사, `data/manifests/ab1-p4p5.json` 생성 |
 | 3 | `m3d samples verify` | **112/112 SHA256 일치 PASS** |
 | 4 | `m3d db apply` | 4테이블 + `schema_migrations` 생성 |
