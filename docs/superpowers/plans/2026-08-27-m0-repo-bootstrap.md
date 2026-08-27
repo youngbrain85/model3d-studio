@@ -81,11 +81,15 @@ node_modules/
 __pycache__/
 dist/
 *.glb
+.superpowers/
 worker/.venv/
 data/samples/
 .pytest_cache/
 *.egg-info/
 ```
+
+**주의:** `.superpowers/` 줄을 빠뜨리면 SDD 워크스페이스가 리포에 커밋된다.
+현재 `.gitignore` 에 이미 들어 있으니 지우지 말 것.
 
 - [ ] **Step 2: `.env.example` 작성**
 
@@ -383,7 +387,7 @@ def load_config(env_file: Path | None = None) -> Config:
 $env:PYTHONUTF8='1'; .\worker\.venv\Scripts\python.exe -m pytest worker\tests -v
 ```
 
-Expected: 9 passed.
+Expected: 8 passed.
 
 - [ ] **Step 9: `worker/src/m3d/doctor.py` 구현**
 
@@ -831,7 +835,7 @@ def dxf_filename(sheet: SourceSheet) -> str:
 $env:PYTHONUTF8='1'; .\worker\.venv\Scripts\python.exe -m pytest worker\tests -v
 ```
 
-Expected: 25 passed (config 9 + source_manifest 16).
+Expected: 23 passed (config 8 + source_manifest 15).
 
 - [ ] **Step 8: 커밋**
 
@@ -1153,7 +1157,7 @@ def verify_manifest(manifest: Manifest, repo_root: Path) -> VerifyReport:
 $env:PYTHONUTF8='1'; .\worker\.venv\Scripts\python.exe -m pytest worker\tests -v
 ```
 
-Expected: 36 passed (config 9 + source_manifest 16 + manifest 11).
+Expected: 34 passed (config 8 + source_manifest 15 + manifest 11).
 
 - [ ] **Step 5: 커밋**
 
@@ -1450,7 +1454,7 @@ def collect(cfg: Config) -> Manifest:
 $env:PYTHONUTF8='1'; .\worker\.venv\Scripts\python.exe -m pytest worker\tests -v
 ```
 
-Expected: 47 passed (config 9 + source_manifest 16 + manifest 11 + collect 11).
+Expected: 44 passed (config 8 + source_manifest 15 + manifest 11 + collect 10).
 
 - [ ] **Step 5: CLI 에 samples 서브앱 추가**
 
@@ -1706,59 +1710,68 @@ def sql() -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_all_four_tables_created(sql):
+@pytest.fixture
+def norm(sql) -> str:
+    """공백을 하나로 접은 SQL.
+
+    정렬용 공백은 언제든 바뀔 수 있다. 그때마다 테스트가 깨지면 테스트를 고치는
+    습관이 들고, 그 습관이 진짜 제약이 사라진 것도 놓치게 만든다.
+    """
+    return re.sub(r"\s+", " ", sql)
+
+
+def test_all_four_tables_created(norm):
     for table in TABLES:
-        assert re.search(rf"create table {table}\b", sql), table
+        assert f"create table {table} (" in norm, table
 
 
-def test_rls_enabled_on_every_table(sql):
+def test_rls_enabled_on_every_table(norm):
     for table in TABLES:
-        assert f"alter table {table}    enable row level security" in sql or \
-               f"alter table {table} enable row level security" in sql, table
+        assert f"alter table {table} enable row level security" in norm, table
 
 
-def test_one_select_policy_per_table(sql):
+def test_one_select_policy_per_table(sql, norm):
     assert sql.count('create policy "authenticated read"') == len(TABLES)
-    assert "to authenticated" in sql
-    assert "to anon" not in sql, "anon 에게 정책을 주면 RLS 증명이 무너진다"
+    assert "to authenticated" in norm
+    assert "to anon" not in norm, "anon 에게 정책을 주면 RLS 증명이 무너진다"
 
 
-def test_coord_system_is_not_null(sql):
+def test_coord_system_is_not_null(norm):
     """§1 — 전역 좌표계 확정을 스키마가 강제해야 한다."""
-    assert re.search(r"coord_system\s+jsonb not null", sql)
+    assert "coord_system jsonb not null" in norm
 
 
-def test_sheets_separates_filename_and_content_sources(sql):
+def test_sheets_separates_filename_and_content_sources(norm):
     """§3 — 파일명 유래와 내용 유래를 섞으면 편철 오류를 검출할 수 없다."""
-    assert "drawing_no_from_filename  text not null" in sql
-    assert "drawing_no_from_content   text," in sql
-    assert "title_from_filename       text not null" in sql
-    assert "title_from_content        text," in sql
+    assert "drawing_no_from_filename text not null" in norm
+    assert "drawing_no_from_content text," in norm
+    assert "title_from_filename text not null" in norm
+    assert "title_from_content text," in norm
 
 
-def test_catalog_status_defaults_to_unverified(sql):
-    assert "catalog_status            text not null default 'unverified'" in sql
+def test_catalog_status_defaults_to_unverified(norm):
+    assert "catalog_status text not null default 'unverified'" in norm
     for status in ("unverified", "match", "mismatch", "unreadable"):
-        assert f"'{status}'" in sql
+        assert f"'{status}'" in norm
 
 
-def test_sheet_pages_keeps_pixel_size(sql):
+def test_sheet_pages_keeps_pixel_size(norm):
     """§4 — 질문 크롭이 원본 픽셀 좌표를 쓰므로 필수."""
-    assert "width_px   int" in sql
-    assert "height_px  int" in sql
+    assert "width_px int" in norm
+    assert "height_px int" in norm
 
 
-def test_asset_role_and_kind_constraints(sql):
-    assert "check (kind in ('dxf','pdf','png','photo'))" in sql
-    assert "check (role in ('source','derived'))" in sql
+def test_asset_role_and_kind_constraints(norm):
+    assert "check (kind in ('dxf','pdf','png','photo'))" in norm
+    assert "check (role in ('source','derived'))" in norm
 
 
-def test_sha256_length_constraint(sql):
-    assert "char_length(sha256) = 64" in sql
+def test_sha256_length_constraint(norm):
+    assert "char_length(sha256) = 64" in norm
 
 
-def test_grade_constraint_uses_korean_values(sql):
-    assert "check (grade in ('핵심','참고'))" in sql
+def test_grade_constraint_uses_korean_values(norm):
+    assert "check (grade in ('핵심','참고'))" in norm
 ```
 
 - [ ] **Step 3: 실패하는 Pydantic 모델 테스트 작성**
@@ -1933,7 +1946,7 @@ class AssetRow(BaseModel):
 $env:PYTHONUTF8='1'; .\worker\.venv\Scripts\python.exe -m pytest worker\tests -v
 ```
 
-Expected: 68 passed (기존 47 + models 11 + migration_sql 10).
+Expected: 65 passed (기존 44 + models 11 + migration_sql 10).
 
 - [ ] **Step 7: `contracts/db.types.ts` 생성 시도 후 수기 작성**
 
@@ -2711,7 +2724,7 @@ def check(cfg: Config) -> dict:
 $env:PYTHONUTF8='1'; .\worker\.venv\Scripts\python.exe -m pytest worker\tests -v
 ```
 
-Expected: 75 passed (기존 68 + db_migrations 7).
+Expected: 72 passed (기존 65 + db_migrations 7).
 
 - [ ] **Step 5: CLI에 db 서브앱 추가**
 
@@ -2844,7 +2857,7 @@ from m3d.samples.collect import DATASET, manifest_path
 from m3d.samples.manifest import load_manifest
 from m3d.samples.source_manifest import parse_source_manifest
 from m3d.seed.ab1_p4p5 import COORD_SYSTEM, build_rows
-from m3d.config import REPO_ROOT, load_config
+from m3d.config import load_config
 
 
 @pytest.fixture
@@ -3149,7 +3162,7 @@ def seed(cfg: Config, *, reseed: bool = False) -> dict[str, int]:
 $env:PYTHONUTF8='1'; .\worker\.venv\Scripts\python.exe -m pytest worker\tests -v
 ```
 
-Expected: 88 passed (기존 75 + seed_rows 13).
+Expected: 85 passed (기존 72 + seed_rows 13).
 
 - [ ] **Step 6: CLI에 seed 명령 추가**
 
