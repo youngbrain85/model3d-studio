@@ -881,7 +881,7 @@ EOF
 `worker/tests/test_manifest.py`:
 
 ```python
-"""매니페스트 — 460MB 를 커밋하지 않고도 무결성을 증명하는 유일한 수단."""
+"""매니페스트 — 413MB 를 커밋하지 않고도 무결성을 증명하는 유일한 수단."""
 
 import hashlib
 import json
@@ -1026,7 +1026,7 @@ Expected: collection error — `ModuleNotFoundError: No module named 'm3d.sample
 ```python
 """샘플 매니페스트 — 112파일 SHA256 정본 (설계서 §6-2·§9).
 
-460MB 바이너리는 커밋하지 않는다. 리포에 남는 이 JSON 이 무결성의 유일한 증거다.
+413MB 바이너리는 커밋하지 않는다. 리포에 남는 이 JSON 이 무결성의 유일한 증거다.
 원본 절대경로는 담지 않는다(머신 종속·경로 유출) — SAMPLE_SOURCE_DIR 기준 상대경로만.
 """
 
@@ -1198,7 +1198,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 `worker/tests/test_collect.py`:
 
 ```python
-"""collect 계획 — 실제 460MB 복사 없이 '무엇을 어디로' 만 검증한다."""
+"""collect 계획 — 실제 413MB 복사 없이 '무엇을 어디로' 만 검증한다."""
 
 import pytest
 
@@ -1523,7 +1523,7 @@ def samples_verify() -> None:
 $env:PYTHONUTF8='1'; .\worker\.venv\Scripts\m3d.exe samples collect
 ```
 
-Expected: `복사 112개 / 건너뜀 0개` → `데이터셋 ab1-p4p5: 112파일 / 약 460 MB`
+Expected: `복사 112개 / 건너뜀 0개` → `데이터셋 ab1-p4p5: 112파일 / 413.1 MB`
 
 - [ ] **Step 7: 검증 실행**
 
@@ -1544,7 +1544,7 @@ Expected: `복사 0개 / 건너뜀 112개` — 두 번째 실행은 아무것도
 - [ ] **Step 9: `data/samples` 가 git 에 잡히지 않는지 확인**
 
 ```bash
-git status --short | grep -q "data/samples" && echo "실패: 460MB 가 추적되고 있음" || echo "OK: gitignore 적용됨"
+git status --short | grep -q "data/samples" && echo "실패: 413MB 가 추적되고 있음" || echo "OK: gitignore 적용됨"
 ```
 
 Expected: `OK: gitignore 적용됨`
@@ -1555,7 +1555,7 @@ Expected: `OK: gitignore 적용됨`
 git add worker/src/m3d/samples/collect.py worker/src/m3d/cli.py worker/tests/test_collect.py data/manifests/ab1-p4p5.json
 git commit -m "feat(worker): samples collect/verify — 112파일 복사·해시 검증
 
-- plan_files 를 순수 함수로 분리해 460MB 복사 없이 계획을 테스트
+- plan_files 를 순수 함수로 분리해 413MB 복사 없이 계획을 테스트
 - 복사 후 사본 해시 대조 + 원본 크기·mtime 불변 확인 (참조 원본 보호)
 - 재실행 멱등: 이미 같은 파일이면 건너뜀
 - 매니페스트 커밋 (112파일 SHA256), data/samples 자체는 gitignore
@@ -3302,7 +3302,7 @@ Expected 화면:
 | `supabase/migrations/` | 스키마 정본 |
 | `data/manifests/` | 샘플 SHA256 매니페스트 (커밋) |
 | `data/fixtures/` | 정답지·카탈로그 사본 (커밋) |
-| `data/samples/` | 도면 원본 사본 460MB (**gitignore**) |
+| `data/samples/` | 도면 원본 사본 413MB (**gitignore**) |
 
 ## 시작하기
 
