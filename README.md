@@ -50,6 +50,11 @@ scripts/verify-supabase.sh                       # 마이그레이션 + 도메�
 `m3d contracts check` 는 "거부되어야 하는 문서"를 실제로 거부하는지 확인한다 —
 규칙이 문서가 아니라 코드로 강제되고 있다는 증거다.
 
+## CI
+
+`ci/workflows/ci.yml` 을 `.github/workflows/` 로 옮기면 켜집니다 — GitHub App 의
+`workflows` 권한 부족으로 자동 설치가 막혀 있습니다. 자세한 내용은 [`ci/README.md`](ci/README.md).
+
 ## 샘플 도면 세트
 
 원본은 사용자 로컬에만 있고 읽기 전용이다. 리포에는 매니페스트만 커밋한다.
