@@ -2282,13 +2282,18 @@ export default defineConfig({
 `tsconfig.node.json`이 `types: ["node"]`를 쓰므로 devDependencies에 `@types/node`를 추가한다:
 
 ```bash
-npm --prefix web ci --save-dev @types/node@^22
+npm --prefix web install --save-dev @types/node@^22
 ```
 
-**주의:** 인자 없는 `npm --prefix web install` 은 이 리포에서 실패한다. npm 은 `--prefix`
-를 적용하기 전에 **현재 디렉터리**의 `package.json` 을 읽는데, 구조 A 는 워크스페이스가
-없어 루트에 `package.json` 이 없다. `npm --prefix web ci` 또는 `cd web` 후 `npm install`
-을 쓴다. `npm --prefix web run <script>` 는 정상 동작한다.
+**주의 — 이 리포의 npm 함정(전부 실측 확인):**
+
+| 명령 | 결과 |
+|---|---|
+| `npm --prefix web install` (인자 없음) | **ENOENT 실패** — `--prefix` 적용 전에 CWD 의 `package.json` 을 읽는데, 구조 A 는 워크스페이스가 없어 루트에 없다 |
+| `npm --prefix web install <pkg>` | 정상 — 위 Step 4 가 이 형태다 |
+| `npm --prefix web ci` | 정상 — 락파일에서 복원할 때 쓴다 |
+| `npm --prefix web ci --save-dev <pkg>` | **exit 0 인데 아무것도 하지 않는다.** `ci` 는 새 의존성을 추가하지 못하고 "up to date" 만 출력한 뒤 `package.json` 을 건드리지 않는다. 신선한 체크아웃에서 이걸 쓰면 한참 뒤 `tsc -b` 가 "cannot find type definition file for 'node'" 로 죽는다 |
+| `npm --prefix web run <script>` | 정상 |
 
 - [ ] **Step 5: `web/index.html` 작성**
 
