@@ -128,3 +128,47 @@ def test_load_rejects_count_mismatch(repo, manifest):
     path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
     with pytest.raises(ValueError, match="file_count"):
         load_manifest(path)
+
+
+def test_korean_filenames_roundtrip_and_verify(repo):
+    """한글 파일명이 utf-8로 왕복 가능한지 + 검증 통과하는지 회귀 방어.
+
+    실제 데이터는 'C01_C0050304-030_강상형일반도(5)(접속1교).png' 같은 파일명을 쓴다.
+    ensure_ascii=True 실수나 인코딩 슬립이 생기면 이 테스트가 잡는다.
+    """
+    korean_rel_path = "data/samples/ab1-p4p5/png/C01_C0050304-030_강상형일반도(5)(접속1교).png"
+    korean_source_rel = "_png/C01_C0050304-030_강상형일반도(5)(접속1교).png"
+    korean_drawing_no = "C0050304-030-강상형일반도"
+
+    target = repo / korean_rel_path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    content = b"korean_test_image_data"
+    target.write_bytes(content)
+
+    entry = ManifestEntry(
+        rel_path=korean_rel_path,
+        source_rel=korean_source_rel,
+        kind="png",
+        role="source",
+        bytes=len(content),
+        sha256=hashlib.sha256(content).hexdigest(),
+        ord="C01",
+        drawing_no=korean_drawing_no,
+    )
+    manifest = Manifest(dataset=DATASET, entries=(entry,))
+
+    # write → load 왕복 검증
+    path = repo / "data/manifests/korean-test.json"
+    write_manifest(manifest, path)
+
+    # JSON 파일이 한글 문자를 직접 포함해야 한다 (escape 되면 안 됨)
+    json_text = path.read_text(encoding="utf-8")
+    assert "강상형일반도" in json_text, "한글이 \\uXXXX 로 escape 되면 이 단언에서 실패한다"
+    assert "C0050304-030-강상형일반도" in json_text, "drawing_no 한글도 직접 포함되어야 한다"
+
+    loaded = load_manifest(path)
+    assert loaded == manifest, "한글 파일명이 손실되면 이 단언에서 실패한다"
+
+    # verify_manifest 도 ok 를 보고해야 한다
+    report = verify_manifest(loaded, repo)
+    assert report.ok, f"파일은 있는데도 verify 가 실패: {report}"
