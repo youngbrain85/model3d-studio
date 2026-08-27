@@ -1,0 +1,102 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# 같은 브랜치에 새 커밋이 오면 이전 실행은 취소한다 (러너 낭비 방지).
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # ── 웹: Node 워크스페이스 (apps/web + packages/contracts) ────────────────────
+  web:
+    name: 웹 (포맷·린트·타입·테스트·빌드)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      # pnpm 보다 먼저 Node 를 고정한다 — pnpm 이 그 Node 위에서 돌게 하려는 것.
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      # 버전은 package.json 의 packageManager 필드가 정본이다 (여기 중복 기재하지 않는다).
+      # cache:true 가 pnpm store 를 pnpm-lock.yaml 해시 키로 캐싱한다.
+      - uses: pnpm/action-setup@v6
+        with:
+          cache: true
+
+      - run: pnpm install --frozen-lockfile
+
+      # 각 단계를 따로 둔다 — 어느 관문에서 깨졌는지 로그에서 바로 보이게.
+      - run: pnpm run format:check
+      - run: pnpm run lint:web
+      - run: pnpm run typecheck:web
+      - run: pnpm run test:web
+      - run: pnpm run build
+
+  # ── 워커: Python (apps/worker) ──────────────────────────────────────────────
+  worker:
+    name: 워커 (ruff·mypy·pytest·계약)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      # Python 인터프리터는 .python-version 을, 패키지는 uv.lock 을 따른다.
+      - uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+          cache-dependency-glob: apps/worker/uv.lock
+
+      # --locked: uv.lock 이 pyproject.toml 과 어긋나면 조용히 재해결하지 않고 실패한다.
+      - run: uv sync --project apps/worker --locked
+
+      - run: uv run --directory apps/worker ruff check .
+      - run: uv run --directory apps/worker ruff format --check .
+      - run: uv run --directory apps/worker mypy src tests
+      - run: uv run --directory apps/worker pytest
+
+      # 규칙이 문서가 아니라 코드로 강제되는지 — JSON Schema 와 pydantic 이 같은 판정을 내는가.
+      - run: uv run --directory apps/worker m3d contracts check
+
+  # ── Supabase: 마이그레이션을 진짜 PostgreSQL 에 적용해 본다 ─────────────────
+  supabase:
+    name: Supabase 스키마 (마이그레이션·RLS·도메인 규칙)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        # Supabase 는 PostgreSQL 15/16 계열이다. gen_random_uuid 에 필요한
+        # pgcrypto 는 이 이미지의 contrib 에 들어 있다.
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      PGHOST: localhost
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: postgres
+    steps:
+      - uses: actions/checkout@v7
+
+      # psql 이 없으면 뒤 단계가 애매하게 깨진다 — 여기서 먼저 크게 실패시킨다.
+      - name: psql 존재 확인
+        run: psql --version
+
+      - run: scripts/verify-supabase.sh

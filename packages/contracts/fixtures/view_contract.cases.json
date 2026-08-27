@@ -1,0 +1,283 @@
+{
+  "_comment": "뷰 계약 수학의 교차 언어 검증 케이스. TS(vitest)와 Python(pytest)이 같은 파일을 읽는다. 기대값은 TS 구현이 아니라 스키마의 수식에서 독립 계산했다.",
+  "tolerance": 1e-9,
+  "extent_epsilon_m": 1e-9,
+  "cases": [
+    {
+      "name": "축정렬 뷰 — u=STA방향(+z), v=상방(+y)",
+      "contract": {
+        "id": "vc-axis-aligned",
+        "name": "AB1 측면도",
+        "sheet_no": "AB1-S-001",
+        "origin": [10.0, 0.0, 5.0],
+        "u_axis": [0.0, 0.0, 1.0],
+        "v_axis": [0.0, 1.0, 0.0],
+        "u_extent": 30.0,
+        "v_extent": 8.0,
+        "unit": "m"
+      },
+      "forward": [
+        {
+          "u": 0,
+          "v": 0,
+          "world": [10.0, 0.0, 5.0]
+        },
+        {
+          "u": 30,
+          "v": 8,
+          "world": [10.0, 8.0, 35.0]
+        },
+        {
+          "u": 15,
+          "v": 4,
+          "world": [10.0, 4.0, 20.0]
+        }
+      ],
+      "inverse": [
+        {
+          "world": [10, 4, 20],
+          "u": 15.0,
+          "v": 4.0,
+          "off_plane": 0.0,
+          "in_extent": true
+        },
+        {
+          "world": [12, 4, 20],
+          "u": 15.0,
+          "v": 4.0,
+          "off_plane": -2.0,
+          "in_extent": true
+        },
+        {
+          "world": [10, 9, 20],
+          "u": 15.0,
+          "v": 9.0,
+          "off_plane": 0.0,
+          "in_extent": false
+        },
+        {
+          "world": [10, 8, 35],
+          "u": 30.0,
+          "v": 8.0,
+          "off_plane": 0.0,
+          "in_extent": true
+        }
+      ],
+      "axes_ok": true,
+      "roundtrip_result": "PASS"
+    },
+    {
+      "name": "수평면에서 45도 회전한 뷰 — 모서리 부동소수 경계",
+      "contract": {
+        "id": "vc-rot45",
+        "name": "사교 구간 전개도",
+        "sheet_no": null,
+        "origin": [0.0, 0.0, 0.0],
+        "u_axis": [0.7071067811865476, 0.0, 0.7071067811865476],
+        "v_axis": [0.0, 1.0, 0.0],
+        "u_extent": 10.0,
+        "v_extent": 5.0,
+        "unit": "m"
+      },
+      "forward": [
+        {
+          "u": 0,
+          "v": 0,
+          "world": [0.0, 0.0, 0.0]
+        },
+        {
+          "u": 10,
+          "v": 5,
+          "world": [7.0710678118654755, 5.0, 7.0710678118654755]
+        },
+        {
+          "u": 5,
+          "v": 2.5,
+          "world": [3.5355339059327378, 2.5, 3.5355339059327378]
+        }
+      ],
+      "inverse": [
+        {
+          "world": [7.0710678118654755, 5.0, 7.0710678118654755],
+          "u": 10.000000000000002,
+          "v": 5.0,
+          "off_plane": 0.0,
+          "in_extent": true
+        },
+        {
+          "world": [0.0, 0.0, 0.0],
+          "u": 0.0,
+          "v": 0.0,
+          "off_plane": 0.0,
+          "in_extent": true
+        },
+        {
+          "world": [0.7071067811865476, 0.0, -0.7071067811865476],
+          "u": 0.0,
+          "v": 0.0,
+          "off_plane": -1.0000000000000002,
+          "in_extent": true
+        }
+      ],
+      "axes_ok": true,
+      "roundtrip_result": "PASS"
+    },
+    {
+      "name": "비직교 축 — 역변환이 성립하지 않으므로 FAIL",
+      "contract": {
+        "id": "vc-nonortho",
+        "name": "잘못된 뷰 — 비직교",
+        "sheet_no": null,
+        "origin": [0.0, 0.0, 0.0],
+        "u_axis": [1.0, 0.0, 0.0],
+        "v_axis": [0.7071067811865476, 0.7071067811865476, 0.0],
+        "u_extent": 4.0,
+        "v_extent": 4.0,
+        "unit": "m"
+      },
+      "forward": [],
+      "inverse": [],
+      "axes_ok": false,
+      "roundtrip_result": "FAIL"
+    },
+    {
+      "name": "비단위 축 — 축 검사 FAIL",
+      "contract": {
+        "id": "vc-nonunit",
+        "name": "잘못된 뷰 — 비단위",
+        "sheet_no": null,
+        "origin": [0.0, 0.0, 0.0],
+        "u_axis": [2.0, 0.0, 0.0],
+        "v_axis": [0.0, 1.0, 0.0],
+        "u_extent": 4.0,
+        "v_extent": 4.0,
+        "unit": "m"
+      },
+      "forward": [],
+      "inverse": [],
+      "axes_ok": false,
+      "roundtrip_result": "FAIL"
+    },
+    {
+      "name": "픽셀 프레임 — v_down 래스터, 뷰가 이미지 일부",
+      "contract": {
+        "id": "vc-pixel-vdown",
+        "name": "시트 이미지 대응 (여백 있는 스캔)",
+        "sheet_no": "AB1-S-002",
+        "origin": [0.0, 0.0, 0.0],
+        "u_axis": [1.0, 0.0, 0.0],
+        "v_axis": [0.0, 1.0, 0.0],
+        "u_extent": 20.0,
+        "v_extent": 10.0,
+        "unit": "m",
+        "pixel_frame": {
+          "width_px": 1200,
+          "height_px": 800,
+          "v_down": true,
+          "view_bbox_px": {
+            "x": 100.0,
+            "y": 50.0,
+            "width": 1000.0,
+            "height": 500.0
+          },
+          "dpi": 300.0
+        }
+      },
+      "forward": [
+        {
+          "u": 10.0,
+          "v": 5.0,
+          "world": [10.0, 5.0, 0.0]
+        }
+      ],
+      "inverse": [
+        {
+          "world": [10.0, 5.0, 0.0],
+          "u": 10.0,
+          "v": 5.0,
+          "off_plane": 0.0,
+          "in_extent": true
+        },
+        {
+          "world": [21.0, 5.0, 0.0],
+          "u": 21.0,
+          "v": 5.0,
+          "off_plane": 0.0,
+          "in_extent": false
+        }
+      ],
+      "pixel": [
+        {
+          "u": 0,
+          "v": 0,
+          "px": 100.0,
+          "py": 550.0
+        },
+        {
+          "u": 20,
+          "v": 10,
+          "px": 1100.0,
+          "py": 50.0
+        },
+        {
+          "u": 10,
+          "v": 5,
+          "px": 600.0,
+          "py": 300.0
+        }
+      ],
+      "axes_ok": true,
+      "roundtrip_result": "PASS"
+    },
+    {
+      "name": "픽셀 프레임 — v_down=false",
+      "contract": {
+        "id": "vc-pixel-vup",
+        "name": "시트 이미지 대응 (y 상향)",
+        "sheet_no": "AB1-S-002",
+        "origin": [0.0, 0.0, 0.0],
+        "u_axis": [1.0, 0.0, 0.0],
+        "v_axis": [0.0, 1.0, 0.0],
+        "u_extent": 20.0,
+        "v_extent": 10.0,
+        "unit": "m",
+        "pixel_frame": {
+          "width_px": 1200,
+          "height_px": 800,
+          "v_down": false,
+          "view_bbox_px": {
+            "x": 100.0,
+            "y": 50.0,
+            "width": 1000.0,
+            "height": 500.0
+          },
+          "dpi": 300.0
+        }
+      },
+      "forward": [],
+      "inverse": [],
+      "pixel": [
+        {
+          "u": 0,
+          "v": 0,
+          "px": 100.0,
+          "py": 50.0
+        },
+        {
+          "u": 20,
+          "v": 10,
+          "px": 1100.0,
+          "py": 550.0
+        },
+        {
+          "u": 10,
+          "v": 5,
+          "px": 600.0,
+          "py": 300.0
+        }
+      ],
+      "axes_ok": true,
+      "roundtrip_result": "PASS"
+    }
+  ]
+}

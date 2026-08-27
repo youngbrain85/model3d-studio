@@ -1,0 +1,196 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://model3d.studio/schemas/coordinate_system.schema.json",
+  "title": "CoordinateSystem",
+  "description": "프로젝트 전역 좌표계 정의. 규칙 §1.\n\n프로젝트마다 최우선 확정하고 문서 최상단에 명시한다.\n예: x=교축직각(+동측), y=EL−오프셋, z=STA−오프셋, Y-up, 단위 m.\n\n구조적으로 강제되는 규칙:\n  - model_unit 은 m, drawing_unit 은 mm 고정. mm↔m 환산 계수는 mm_per_model_unit 한 곳에만 있다 (§1).\n  - handedness 는 right 고정 — 뷰 계약의 법선 n = u_axis × v_axis 가 오른손 규칙을 전제한다 (§7).\n  - 어느 축이든 assumed=true 이면 assumptions 에 최소 1개의 뒤집기 검증 항목이 있어야 한다 (§1).\n  - up_axis 는 도면 EL 이 대응하는 축이며 axes 의 해당 축 meaning 과 모순되면 안 된다.\n\n이 스키마는 Agent SDK 구조화 출력 스키마로 그대로 넘겨지므로 외부 $ref 를 쓰지 않는다(자기완결).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "project_id",
+    "up_axis",
+    "handedness",
+    "model_unit",
+    "drawing_unit",
+    "mm_per_model_unit",
+    "axes",
+    "origin_reference"
+  ],
+  "properties": {
+    "project_id": { "type": "string", "minLength": 1 },
+    "up_axis": {
+      "description": "상방 축 — 도면 EL(표고)이 대응하는 축. three.js/glTF 기본은 Y-up.",
+      "enum": ["X", "Y", "Z"]
+    },
+    "handedness": {
+      "description": "좌표계 손 방향. right 고정 — glTF·three.js 규약이자 뷰 계약 법선(n = u_axis × v_axis)의 전제다.",
+      "const": "right"
+    },
+    "model_unit": {
+      "description": "모델 단위. 규칙 §1 — 모델은 m 고정.",
+      "const": "m"
+    },
+    "drawing_unit": {
+      "description": "도면 치수 단위. 규칙 §1 — 도면 치수는 mm 정본.",
+      "const": "mm"
+    },
+    "mm_per_model_unit": {
+      "description": "규칙 §1 — '변환은 한 곳에서만'. 그 한 곳이 이 값이다. 코드 어디에서도 1000 을 직접 곱하거나 나누지 않고 units 모듈(mmToModel/modelToMm)만 쓴다.",
+      "const": 1000
+    },
+    "axes": {
+      "description": "x·y·z 각 축의 의미와 양의 방향. 규칙 §1 — 문서 최상단에 명시한다.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y", "z"],
+      "properties": {
+        "x": { "$ref": "#/$defs/axis" },
+        "y": { "$ref": "#/$defs/axis" },
+        "z": { "$ref": "#/$defs/axis" }
+      }
+    },
+    "origin_reference": {
+      "description": "기준선(받침선·매치라인·STA)과 모델 원점의 대응. 규칙 §1 — 대응표를 SSOT 문서에 둔다.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["description", "source_sheets"],
+      "properties": {
+        "description": {
+          "description": "원점이 실물의 어느 점인가. 예: 'P4 받침선과 교축중심선의 교점, 상부플랜지 상면'.",
+          "type": "string",
+          "minLength": 1
+        },
+        "station": {
+          "description": "원점의 측점. 예: 'STA 1+234.560'.",
+          "type": ["string", "null"],
+          "default": null
+        },
+        "elevation_m": {
+          "description": "원점의 표고 (m). 도면은 EL 을 m 로 쓰는 경우가 많으므로 여기만 예외적으로 m 원문값이다.",
+          "type": ["number", "null"],
+          "default": null
+        },
+        "offset_m": {
+          "description": "교축중심선 기준 횡방향 오프셋 (m).",
+          "type": ["number", "null"],
+          "default": null
+        },
+        "source_sheets": {
+          "description": "근거 도면번호. 규칙 §8 — 근거 없는 수치는 반려. 최소 1개.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "assumptions": {
+      "description": "미확정 사항의 가정 목록. 규칙 §1 — 방위가 미확정이면 가정임을 표기하고 뒤집기 검증 항목으로 등재한다.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/assumption" },
+      "default": []
+    }
+  },
+  "$defs": {
+    "axis": {
+      "description": "한 축의 정의.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["meaning", "positive_direction", "assumed"],
+      "properties": {
+        "meaning": {
+          "description": "축의 의미. 예: '교축직각', 'EL−오프셋(상방)', 'STA−오프셋(종점방향)'.",
+          "type": "string",
+          "minLength": 1
+        },
+        "positive_direction": {
+          "description": "양의 방향. 예: '+동측', '+상방', '+종점방향'.",
+          "type": "string",
+          "minLength": 1
+        },
+        "assumed": {
+          "description": "방위가 도면으로 확정되지 않아 가정한 값인가. true 면 assumptions 에 대응 항목이 반드시 있어야 한다 (규칙 §1).",
+          "type": "boolean"
+        }
+      }
+    },
+    "assumption": {
+      "description": "가정 하나와 그 뒤집기 검증 절차.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["item", "assumed_value", "reason", "flip_test", "resolved"],
+      "properties": {
+        "item": {
+          "description": "무엇을 가정했는가. 예: 'x 양의 방향이 동측'.",
+          "type": "string",
+          "minLength": 1
+        },
+        "assumed_value": { "type": "string", "minLength": 1 },
+        "reason": {
+          "description": "왜 확정하지 못했는가. 도면 근거가 없다는 사실 자체를 남긴다.",
+          "type": "string",
+          "minLength": 1
+        },
+        "flip_test": {
+          "description": "규칙 §1 — 이 가정이 틀렸을 때 무엇이 어떻게 달라지는지와 그 확인 절차. 예: '뒤집으면 배수구가 서측으로 간다 — 사진 P4-03 의 배수구 위치로 판정'.",
+          "type": "string",
+          "minLength": 1
+        },
+        "resolved": {
+          "description": "확정되었는가. true 면 resolved_by 가 있어야 한다.",
+          "type": "boolean",
+          "default": false
+        },
+        "resolved_by": {
+          "description": "확정 근거 — decision id 또는 도면번호.",
+          "type": ["string", "null"],
+          "default": null
+        }
+      },
+      "allOf": [
+        {
+          "description": "확정되었다면 그 근거를 남긴다.",
+          "if": { "properties": { "resolved": { "const": true } }, "required": ["resolved"] },
+          "then": {
+            "required": ["resolved_by"],
+            "properties": { "resolved_by": { "type": "string", "minLength": 1 } }
+          }
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "description": "규칙 §1 — 어느 축이든 방위를 가정했다면 assumptions 에 뒤집기 검증 항목이 등재되어야 한다.",
+      "if": {
+        "required": ["axes"],
+        "properties": {
+          "axes": {
+            "anyOf": [
+              {
+                "required": ["x"],
+                "properties": {
+                  "x": { "required": ["assumed"], "properties": { "assumed": { "const": true } } }
+                }
+              },
+              {
+                "required": ["y"],
+                "properties": {
+                  "y": { "required": ["assumed"], "properties": { "assumed": { "const": true } } }
+                }
+              },
+              {
+                "required": ["z"],
+                "properties": {
+                  "z": { "required": ["assumed"], "properties": { "assumed": { "const": true } } }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "then": {
+        "required": ["assumptions"],
+        "properties": { "assumptions": { "minItems": 1 } }
+      }
+    }
+  ]
+}

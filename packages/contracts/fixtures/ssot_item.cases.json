@@ -1,0 +1,176 @@
+{
+  "_comment": "규칙 §2·§3·§8 을 스키마로 강제한다.",
+  "schema": "ssot_item.schema.json",
+  "valid": [
+    {
+      "id": "ssot-001",
+      "project_id": "prj-ab1",
+      "item": "S5 전장",
+      "value": 32500,
+      "unit": "mm",
+      "source_sheets": ["AB1-S-021", "AB1-S-003"],
+      "cross_source_confirmed": true,
+      "status": "confirmed",
+      "provisional_from_decision": null,
+      "derived": false,
+      "derivation": null,
+      "cross_check": {
+        "formula": "구간 합 = 전장",
+        "expected": 32500.0,
+        "actual": 32500.0,
+        "tolerance": 5.0,
+        "result": "PASS"
+      },
+      "revision": []
+    },
+    {
+      "id": "ssot-005",
+      "project_id": "prj-ab1",
+      "item": "S5 다이아프램 간격(추정)",
+      "value": 2500,
+      "unit": "mm",
+      "source_sheets": ["AB1-S-034"],
+      "cross_source_confirmed": false,
+      "status": "estimated",
+      "provisional_from_decision": null,
+      "derived": false,
+      "derivation": null,
+      "cross_check": null,
+      "revision": []
+    },
+    {
+      "id": "ssot-006",
+      "project_id": "prj-ab1",
+      "item": "S5 전장",
+      "value": 32500,
+      "unit": "mm",
+      "source_sheets": ["AB1-S-021", "AB1-S-003"],
+      "cross_source_confirmed": true,
+      "status": "confirmed",
+      "provisional_from_decision": null,
+      "derived": true,
+      "derivation": {
+        "formula": "z = STA − STA0",
+        "inputs": ["ssot-010", "ssot-011"]
+      },
+      "cross_check": {
+        "formula": "구간 합 = 전장",
+        "expected": 32500.0,
+        "actual": 32500.0,
+        "tolerance": 5.0,
+        "result": "PASS"
+      },
+      "revision": []
+    },
+    {
+      "id": "ssot-007",
+      "project_id": "prj-ab1",
+      "item": "S5 전장",
+      "value": 32500,
+      "unit": "mm",
+      "source_sheets": ["AB1-S-021"],
+      "cross_source_confirmed": false,
+      "status": "open",
+      "provisional_from_decision": "dec-003",
+      "derived": false,
+      "derivation": null,
+      "cross_check": null,
+      "revision": []
+    }
+  ],
+  "invalid": [
+    {
+      "why": "근거 도면번호 없음 — 규칙 §8, 근거 없는 수치는 반려",
+      "doc": {
+        "id": "ssot-001",
+        "project_id": "prj-ab1",
+        "item": "S5 전장",
+        "value": 32500,
+        "unit": "mm",
+        "source_sheets": [],
+        "cross_source_confirmed": true,
+        "status": "confirmed",
+        "provisional_from_decision": null,
+        "derived": false,
+        "derivation": null,
+        "cross_check": {
+          "formula": "구간 합 = 전장",
+          "expected": 32500.0,
+          "actual": 32500.0,
+          "tolerance": 5.0,
+          "result": "PASS"
+        },
+        "revision": []
+      }
+    },
+    {
+      "why": "파생 계산인데 검산이 없다 — 규칙 §2",
+      "doc": {
+        "id": "ssot-002",
+        "project_id": "prj-ab1",
+        "item": "S5 전장",
+        "value": 32500,
+        "unit": "mm",
+        "source_sheets": ["AB1-S-021", "AB1-S-003"],
+        "cross_source_confirmed": true,
+        "status": "confirmed",
+        "provisional_from_decision": null,
+        "derived": true,
+        "derivation": {
+          "formula": "EL − 기준EL",
+          "inputs": ["ssot-010", "ssot-011"]
+        },
+        "cross_check": null,
+        "revision": []
+      }
+    },
+    {
+      "why": "검산 FAIL 인데 확정 상태 — 규칙 §2",
+      "doc": {
+        "id": "ssot-003",
+        "project_id": "prj-ab1",
+        "item": "S5 전장",
+        "value": 32500,
+        "unit": "mm",
+        "source_sheets": ["AB1-S-021", "AB1-S-003"],
+        "cross_source_confirmed": true,
+        "status": "confirmed",
+        "provisional_from_decision": null,
+        "derived": false,
+        "derivation": null,
+        "cross_check": {
+          "formula": "간격 × 개수 = 연장",
+          "expected": 32500.0,
+          "actual": 30000.0,
+          "tolerance": 5.0,
+          "result": "FAIL"
+        },
+        "revision": []
+      }
+    },
+    {
+      "why": "근거 시트가 1개인데 교차 확인 표기 — 규칙 §3",
+      "doc": {
+        "id": "ssot-004",
+        "project_id": "prj-ab1",
+        "item": "S5 전장",
+        "value": 32500,
+        "unit": "mm",
+        "source_sheets": ["AB1-S-021"],
+        "cross_source_confirmed": true,
+        "status": "confirmed",
+        "provisional_from_decision": null,
+        "derived": false,
+        "derivation": null,
+        "cross_check": {
+          "formula": "구간 합 = 전장",
+          "expected": 32500.0,
+          "actual": 32500.0,
+          "tolerance": 5.0,
+          "result": "PASS"
+        },
+        "revision": []
+      }
+    }
+  ]
+}

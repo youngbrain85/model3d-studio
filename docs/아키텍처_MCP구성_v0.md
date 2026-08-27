@@ -8,7 +8,7 @@
 
 ```
 [1] 업로드            도면(PDF·DWG·DXF·이미지) + 현장 사진 (+선택: 기존 3D 자산)
-[2] 변환·정규화       PDF→페이지 이미지+텍스트(PyMuPDF/pdftoppm), DXF 파싱(ezdxf),
+[2] 변환·정규화       PDF→페이지 이미지+텍스트(pypdfium2/pdftoppm), DXF 파싱(ezdxf),
                       시트별 고해상 PNG + sheet_text 생성 (AI가 읽을 수 있는 형태)
 [3] 카탈로그·분류     표제란 판독(도면번호·제목·척도) → 전수 대조(편철 오류 검출)
                       → 부재·섹션별 시트 분류 + 커버리지 맵 (LLM)
@@ -34,7 +34,7 @@
 | 오케스트레이션 | **Claude Agent SDK** (Python) | 본 프로젝트에서 검증한 패턴 그대로: 병렬 판독 워크플로·구조화 출력 스키마·독립 검증관. 서브에이전트+Workflow 개념을 서버 측에서 재현 |
 | LLM | Claude (claude-fable-5 / claude-sonnet-5) | 판독·분류는 sonnet, 애매성 판정·검토는 fable 상향 |
 | 기하 엔진 | Python: trimesh + numpy (+ manifold3d) | GLB 산출·수밀 검사·슬라이스 실측 전부 검증된 조합 |
-| CAD 파싱 | ezdxf (DXF), PyMuPDF·pdftoppm (PDF) | DWG는 ODA File Converter로 DXF 변환 후 처리(라이선스 프리 원칙) |
+| CAD 파싱 | ezdxf (DXF), **pypdfium2**·pdftoppm (PDF) | DWG는 ODA File Converter로 DXF 변환 후 처리(라이선스 프리 원칙). PyMuPDF는 AGPL-3.0/상용 듀얼 라이선스라 서버측 래스터화 SaaS에 제약 — M0에서 pypdfium2(BSD/Apache)로 교체 |
 | 렌더 검수 | matplotlib 정사영(painter) + three.js 웹 뷰어 | 정사영 실척 렌더는 검증용, 웹 뷰어는 사용자 게이트용 |
 | 웹 프론트 | React + Vite + Three.js (WebGL) | 기존 web-app-v2 스택 재사용 — 뷰 계약·GLB 로더 이식 |
 | DB·인증·저장소 | Supabase (PostgreSQL + Auth + Storage, RLS) | 검증된 스택. 프로젝트/시트/ambiguity/결정/모델 버전 테이블 |

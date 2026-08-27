@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://model3d.studio/schemas/decision.schema.json",
+  "title": "Decision",
+  "description": "질문 카드에 대한 사용자 응답. 규칙 §4 — '모르겠다 — 권장대로 진행' 은 항상 허용하며 그 결정은 SSOT 에 잠정으로 기록되어 미결 목록과 연동된다.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "ambiguity_id", "choice", "provisional", "responder", "decided_at"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "ambiguity_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "choice": {
+      "description": "선택한 선택지의 인덱스(0-based), 또는 'unknown'(모르겠다 — 권장대로 진행).",
+      "oneOf": [
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3
+        },
+        {
+          "const": "unknown"
+        }
+      ]
+    },
+    "provisional": {
+      "description": "잠정 결정인가. choice='unknown' 이면 반드시 true — 권장안으로 진행하되 미결로 남는다.",
+      "type": "boolean"
+    },
+    "responder": {
+      "type": "string",
+      "minLength": 1
+    },
+    "decided_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "note": {
+      "type": ["string", "null"]
+    }
+  },
+  "allOf": [
+    {
+      "description": "규칙 §4 — 모르겠다 선택은 반드시 잠정으로 기록한다.",
+      "if": {
+        "type": "object",
+        "properties": {
+          "choice": {
+            "const": "unknown"
+          }
+        },
+        "required": ["choice"]
+      },
+      "then": {
+        "type": "object",
+        "properties": {
+          "provisional": {
+            "const": true
+          }
+        }
+      }
+    }
+  ]
+}

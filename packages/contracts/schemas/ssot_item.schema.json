@@ -1,0 +1,203 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://model3d.studio/schemas/ssot_item.schema.json",
+  "title": "SsotItem",
+  "description": "치수 정본(SSOT, '실측정리') 한 항목. 규칙 §2 — 모든 수치에 근거 도면번호를 병기하고, 확정/추정/미결을 분리하며, 파생 계산은 검산을 동반한다. 검산 없는 수치는 싣지 않는다.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "project_id", "item", "value", "unit", "source_sheets", "status", "derived"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "project_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "item": {
+      "type": "string",
+      "minLength": 1
+    },
+    "value": {
+      "type": ["number", "string"]
+    },
+    "unit": {
+      "description": "도면 원문값은 mm, 모델 좌표는 m, 무차원은 '-'.",
+      "enum": ["mm", "m", "deg", "ea", "-"]
+    },
+    "source_sheets": {
+      "description": "근거 도면번호. 규칙 §8 — 근거(도면번호·좌표) 없는 수치는 반려. 최소 1개.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "cross_source_confirmed": {
+      "description": "규칙 §3 — 중요 치수는 2개 이상 뷰·시트에서 교차 확인한다. source_sheets 가 2개 이상일 때만 true 가 될 수 있다.",
+      "type": "boolean",
+      "default": false
+    },
+    "status": {
+      "description": "확정(confirmed) / 추정(estimated) / 미결(open). 규칙 §2 — 추정을 확정처럼 쓰지 않는다.",
+      "enum": ["confirmed", "estimated", "open"]
+    },
+    "provisional_from_decision": {
+      "description": "'모르겠다 — 권장대로' 결정에서 유래한 잠정값이면 그 decision id.",
+      "type": ["string", "null"],
+      "default": null
+    },
+    "derived": {
+      "description": "원문값이 아니라 파생 계산 결과인가. 규칙 §2 — 원문값과 구분 표기한다.",
+      "type": "boolean"
+    },
+    "derivation": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["formula", "inputs"],
+      "properties": {
+        "formula": {
+          "type": "string",
+          "minLength": 1
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        }
+      },
+      "default": null
+    },
+    "cross_check": {
+      "description": "검산. 규칙 §2 — 구간 합=전장, 간격×개수=연장, 포물선 A×L²=낙차 등.",
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["formula", "expected", "actual", "tolerance", "result"],
+      "properties": {
+        "formula": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expected": {
+          "type": "number"
+        },
+        "actual": {
+          "type": "number"
+        },
+        "tolerance": {
+          "type": "number",
+          "minimum": 0
+        },
+        "result": {
+          "enum": ["PASS", "FAIL"]
+        }
+      },
+      "default": null
+    },
+    "revision": {
+      "description": "정정 이력. 규칙 §2 — 사용자 정정은 즉시 반영하고 정정 사유를 기록한다.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["version", "changed_at", "reason"],
+        "properties": {
+          "version": {
+            "type": "string"
+          },
+          "changed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "previous_value": {
+            "type": ["number", "string", "null"]
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "default": []
+    }
+  },
+  "allOf": [
+    {
+      "description": "규칙 §2 — 파생 계산은 유도식과 검산을 반드시 동반한다.",
+      "if": {
+        "type": "object",
+        "properties": {
+          "derived": {
+            "const": true
+          }
+        },
+        "required": ["derived"]
+      },
+      "then": {
+        "type": "object",
+        "required": ["derivation", "cross_check"],
+        "properties": {
+          "derivation": {
+            "type": "object"
+          },
+          "cross_check": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    {
+      "description": "규칙 §2 — 검산이 FAIL 인 수치는 확정될 수 없다.",
+      "if": {
+        "type": "object",
+        "properties": {
+          "cross_check": {
+            "type": "object",
+            "properties": {
+              "result": {
+                "const": "FAIL"
+              }
+            },
+            "required": ["result"]
+          }
+        },
+        "required": ["cross_check"]
+      },
+      "then": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "not": {
+              "const": "confirmed"
+            }
+          }
+        }
+      }
+    },
+    {
+      "description": "규칙 §3 — 교차 확인 표기는 근거 시트가 2개 이상일 때만 성립한다.",
+      "if": {
+        "type": "object",
+        "properties": {
+          "cross_source_confirmed": {
+            "const": true
+          }
+        },
+        "required": ["cross_source_confirmed"]
+      },
+      "then": {
+        "type": "object",
+        "properties": {
+          "source_sheets": {
+            "type": "array",
+            "minItems": 2
+          }
+        }
+      }
+    }
+  ]
+}

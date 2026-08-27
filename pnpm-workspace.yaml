@@ -1,0 +1,19 @@
+# 워크스페이스 멤버. apps/worker 는 Python(uv) 프로젝트라 여기 들어가지 않는다.
+packages:
+  - apps/web
+  - packages/*
+
+# pnpm 10 은 의존성의 lifecycle script(preinstall/install/postinstall)를 기본 차단한다
+# — 설치만으로 임의 코드가 도는 공급망 공격을 막기 위해서다.
+# 빌드가 꼭 필요한 패키지(네이티브 바인딩 등)만 여기에 이름을 적어 명시적으로 허용한다.
+#
+# 지금 트리에는 빌드가 필요한 패키지가 없다 (Vite 8 은 esbuild 가 아니라 rolldown 을 쓰고,
+# rolldown/lightningcss 는 prebuilt 바이너리를 optionalDependencies 로 받는다).
+# 그래서 목록이 비어 있는 것이 정상이다.
+onlyBuiltDependencies: []
+
+# 차단된 빌드가 생겨도 pnpm 은 기본적으로 경고만 하고 설치를 성공시킨다.
+# 그러면 "설치는 됐는데 런타임에 네이티브 모듈이 없다"가 CI 를 통과해 버린다.
+# true 로 두면 그 순간 ERR_PNPM_IGNORED_BUILDS 로 설치가 실패한다 —
+# 누군가 위 목록에 이름을 올리는 의식적인 결정을 하도록 강제한다.
+strictDepBuilds: true

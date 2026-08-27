@@ -1,0 +1,163 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://model3d.studio/schemas/ambiguity.schema.json",
+  "title": "Ambiguity",
+  "description": "판독 애매값 — 사용자 질문 카드의 원천. 규칙 §3·§4.\n\n판독 에이전트는 애매한 값을 절대 추정으로 확정하지 않고 이 구조로 분리한다(§3).\n한 카드 = 한 요소이며, 반드시 도면 크롭을 동반하고, 선택지마다 근거와 모델 영향을 붙이고,\n권장안을 첫 번째에 둔다(§4).\n\n구조적으로 강제되는 규칙:\n  - options 는 2~4개 (§3)\n  - options[0] 은 recommended=true, options[1..] 은 recommended=false\n    → '권장안은 정확히 하나이고 첫 번째'가 prefixItems/items 로 강제된다 (§4)\n  - sheet_refs 최소 1개 — 크롭 없는 질문은 만들 수 없다 (§4)\n  - allow_unknown 은 항상 true — '모르겠다 — 권장대로 진행' 을 뺄 수 없다 (§4)\n\n이 스키마는 Agent SDK 구조화 출력 스키마로 그대로 넘겨지므로 외부 $ref 를 쓰지 않는다(자기완결).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "project_id",
+    "item",
+    "question",
+    "sheet_refs",
+    "options",
+    "model_impact",
+    "status"
+  ],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "project_id": { "type": "string", "minLength": 1 },
+    "item": {
+      "description": "애매한 대상 요소 하나. 규칙 §4 — 한 질문 = 한 요소. 여러 애매점을 묶지 않는다.",
+      "type": "string",
+      "minLength": 1
+    },
+    "question": {
+      "description": "사용자에게 보일 질문 문장. 단일 요소에 대한 단일 질문이어야 한다.",
+      "type": "string",
+      "minLength": 1
+    },
+    "sheet_refs": {
+      "description": "근거 시트와 크롭 박스. 규칙 §4 — 질문에는 반드시 해당 도면의 크롭 이미지를 동반한다. 두 시트 대조가 필요하면 2개 이상.",
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/sheetCrop" }
+    },
+    "options": {
+      "description": "해석 선택지 2~4개. 규칙 §3·§4 — 각 선택지에 근거와 모델 영향을 붙이고, 권장안을 첫 번째에 둔다. options[0].recommended=true, 나머지는 false 로 구조 강제.",
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 4,
+      "prefixItems": [
+        {
+          "description": "권장안. 규칙 §4 — 권장안을 첫 번째에 둔다.",
+          "allOf": [
+            { "$ref": "#/$defs/option" },
+            { "type": "object", "properties": { "recommended": { "const": true } } }
+          ]
+        }
+      ],
+      "items": {
+        "description": "대안. 권장안은 options[0] 하나뿐이므로 recommended=false 여야 한다.",
+        "allOf": [
+          { "$ref": "#/$defs/option" },
+          { "type": "object", "properties": { "recommended": { "const": false } } }
+        ]
+      }
+    },
+    "model_impact": {
+      "description": "이 애매값이 모델 전체에 미치는 영향 요약. 질문 카드의 '왜 묻는가'에 해당한다.",
+      "type": "string",
+      "minLength": 1
+    },
+    "allow_unknown": {
+      "description": "규칙 §4 — '모르겠다 — 권장대로 진행, 나중에 확인' 선택지를 항상 허용한다. 항상 true(끌 수 없다). 이 선택의 결과는 decision.choice='unknown' 이며 SSOT 에 잠정으로 기록된다.",
+      "const": true,
+      "default": true
+    },
+    "status": {
+      "description": "대기(pending) / 결정(decided) / 잠정(provisional). provisional 은 '모르겠다' 결정으로 권장안 진행 중이며 미결 목록에 남아 있는 상태.",
+      "enum": ["pending", "decided", "provisional"]
+    },
+    "conflicts_with": {
+      "description": "이 답변이 모순되는 다른 판독/애매값의 id. 규칙 §4 — 즉시 재질문하지 말고 근거를 갖춰 1회 재확인한다.",
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "default": []
+    },
+    "reconfirm_count": {
+      "description": "재확인 횟수. 규칙 §4 — 1회로 제한한다.",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1,
+      "default": 0
+    },
+    "created_at": { "type": "string", "format": "date-time" }
+  },
+  "$defs": {
+    "sheetCrop": {
+      "description": "질문 카드에 붙는 도면 크롭 한 장.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sheet_no", "bbox_px"],
+      "properties": {
+        "sheet_no": {
+          "description": "근거 도면번호. 표제란 판독값(sheet.sheet_no_from_titleblock)이어야 하며 파일명 유추값은 근거가 아니다(규칙 §3).",
+          "type": "string",
+          "minLength": 1
+        },
+        "page": { "type": ["integer", "null"], "minimum": 1, "default": null },
+        "bbox_px": {
+          "description": "원본 페이지 이미지의 크롭 영역. 규칙 §4 — 원본 픽셀 좌표에서 잘라 확대한다. 위치 배열이 아니라 이름 있는 객체다 — [x,y,w,h] 와 [x0,y0,x1,y1] 혼동이 Python(PIL)·TS(canvas) 경계에서 실제로 사고를 낸다.",
+          "$ref": "#/$defs/bboxPx"
+        },
+        "crop_path": {
+          "description": "생성된 크롭 이미지 저장 경로 (Supabase Storage 키).",
+          "type": ["string", "null"],
+          "default": null
+        },
+        "caption": {
+          "description": "두 시트 대조 크롭일 때 어느 쪽인지 등의 설명.",
+          "type": ["string", "null"],
+          "default": null
+        }
+      }
+    },
+    "bboxPx": {
+      "description": "이미지 픽셀 좌표 박스. 좌상단 원점, x 우측·y 하측 증가. width·height 는 0 보다 커야 한다(빈 크롭 금지).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y", "width", "height"],
+      "properties": {
+        "x": { "type": "number", "minimum": 0 },
+        "y": { "type": "number", "minimum": 0 },
+        "width": { "type": "number", "exclusiveMinimum": 0 },
+        "height": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "option": {
+      "description": "해석 선택지 하나.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label", "rationale", "model_impact", "recommended"],
+      "properties": {
+        "label": {
+          "description": "선택지 제목 — 사용자가 버튼에서 읽는 문구.",
+          "type": "string",
+          "minLength": 1
+        },
+        "rationale": {
+          "description": "이 해석의 근거. 규칙 §8 — 근거(도면번호·좌표) 없는 선택지는 반려한다.",
+          "type": "string",
+          "minLength": 1
+        },
+        "source_sheets": {
+          "description": "이 해석을 뒷받침하는 도면번호.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "default": []
+        },
+        "model_impact": {
+          "description": "이 선택지를 고르면 모델이 어떻게 달라지는가. 규칙 §4 — 명시 필수.",
+          "type": "string",
+          "minLength": 1
+        },
+        "recommended": {
+          "description": "권장안인가. options[0] 만 true 다.",
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,59 @@
+{
+  "_comment": "규칙 §4 — '모르겠다 — 권장대로 진행' 은 반드시 잠정으로 기록된다.",
+  "schema": "decision.schema.json",
+  "valid": [
+    {
+      "id": "dec-001",
+      "ambiguity_id": "amb-001",
+      "choice": 0,
+      "provisional": false,
+      "responder": "user@example.com",
+      "decided_at": "2026-08-27T06:00:00Z",
+      "note": null
+    },
+    {
+      "id": "dec-002",
+      "ambiguity_id": "amb-001",
+      "choice": 1,
+      "provisional": true,
+      "responder": "user@example.com",
+      "decided_at": "2026-08-27T06:05:00Z",
+      "note": "현장 확인 후 재검토"
+    },
+    {
+      "id": "dec-003",
+      "ambiguity_id": "amb-002",
+      "choice": "unknown",
+      "provisional": true,
+      "responder": "user@example.com",
+      "decided_at": "2026-08-27T06:10:00Z",
+      "note": "권장안으로 진행"
+    }
+  ],
+  "invalid": [
+    {
+      "why": "'모르겠다' 인데 잠정이 아니다 — 규칙 §4",
+      "doc": {
+        "id": "dec-004",
+        "ambiguity_id": "amb-002",
+        "choice": "unknown",
+        "provisional": false,
+        "responder": "user@example.com",
+        "decided_at": "2026-08-27T06:10:00Z",
+        "note": null
+      }
+    },
+    {
+      "why": "선택지 인덱스가 범위 밖 (최대 4개이므로 0~3)",
+      "doc": {
+        "id": "dec-005",
+        "ambiguity_id": "amb-001",
+        "choice": 4,
+        "provisional": false,
+        "responder": "user@example.com",
+        "decided_at": "2026-08-27T06:10:00Z",
+        "note": null
+      }
+    }
+  ]
+}

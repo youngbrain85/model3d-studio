@@ -1,0 +1,100 @@
+[project]
+name = "model3d-worker"
+version = "0.0.0"
+description = "model3d-studio 파이프라인 워커 — 변환·판독·모델링·검증"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    # 오케스트레이션 (아키텍처 §2)
+    "claude-agent-sdk>=0.2.145",
+    # 기하 엔진
+    "trimesh>=5.0.0",
+    "numpy>=2.5.2",
+    "manifold3d>=3.5.2",
+    # CAD·PDF 파싱
+    "ezdxf>=1.4.4",
+    # PDF 래스터화·텍스트 추출. PyMuPDF 가 아니라 pypdfium2 인 이유는
+    # docs/M0_부트스트랩.md 「기술 선택」 참고 — PyMuPDF 는 AGPL-3.0/상용 듀얼
+    # 라이선스라 서버측 래스터화 SaaS 에 법적 제약이 붙는다. pypdfium2 는 BSD/Apache.
+    "pypdfium2>=5.13.0",
+    "pillow>=12.3.0",
+    # 렌더 검수 (실척 정사영)
+    "matplotlib>=3.11.1",
+    # 계약·설정·CLI
+    "pydantic>=2.13.4",
+    "pydantic-settings>=2.15.0",
+    "jsonschema>=4.26.0",
+    "typer>=0.27.1",
+    "httpx>=0.28.1",
+    "python-dotenv>=1.2.3",
+]
+
+[project.scripts]
+m3d = "model3d_worker.cli:app"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-cov>=7.0.0",
+    "ruff>=0.16.4",
+    "mypy>=2.3.1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/model3d_worker"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",    # pycodestyle
+    "F",         # pyflakes
+    "I",         # isort
+    "N",         # pep8-naming
+    "UP",        # pyupgrade
+    "B",         # bugbear
+    "SIM",       # simplify
+    "RUF",       # ruff
+    "PTH",       # pathlib 사용 강제 (Windows·한글 경로 안전)
+    "ARG",       # 미사용 인자
+    "S",         # bandit — 비밀키를 다루므로 하드코딩 자격증명 탐지가 필요하다 (CLAUDE.md §3)
+    "BLE",       # 광범위 except 금지 — 실패를 삼키지 않는다
+    "TRY",       # 예외 처리 관행
+]
+ignore = [
+    "RUF001", "RUF002", "RUF003",  # 한글 주석의 전각 문자 오탐
+    # 이 프로젝트의 예외 메시지는 "무엇이 틀렸고 무엇을 하면 되는지"를 한국어로 말해야 한다
+    # (규칙 §2 — 실패는 실패로 보고). 짧은 메시지를 강요하는 TRY003 은 그 목적과 상충한다.
+    "TRY003",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# 테스트는 assert 사용이 정상이고(S101), 픽스처 인자를 안 쓰는 경우가 있다(ARG).
+"tests/**" = ["ARG", "S101"]
+
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+disallow_untyped_defs = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+# 서드파티 타입 스텁이 없는 것들
+module = ["trimesh.*", "ezdxf.*", "pypdfium2.*", "manifold3d.*", "matplotlib.*", "jsonschema.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+pythonpath = ["src"]

@@ -1,0 +1,15 @@
+{
+  "set_id": "ab1_p4p5",
+  "description": "접속1교 P4~P5 정밀조사 패키지 — v0 합격 기준(M3)의 테스트베드. 기존 SPEC_v2·재실측 결과라는 정답지가 이미 있는 유일한 구간.",
+  "source_hint": "D:\\Projects\\Inspection\\mbi_app_v2\\assets\\drawings_organized\\_정밀조사패키지_P4P5",
+  "answers": [
+    "**/SPEC_v2.md",
+    "**/SPEC_v2_*.md",
+    "**/*재실측*.json",
+    "**/*재실측*.md",
+    "**/실측정리*.json",
+    "정답/**"
+  ],
+  "exclude": ["**/*.bak", "**/사본*"],
+  "notes": "answers 는 M3 대조 기준이다. 판독 파이프라인 입력(work/samples/ab1_p4p5/source/)과 물리적으로 분리되며, 여기에 선언된 것만 정답으로 취급한다 — 파일명 추측으로 정답을 정하지 않는다 (규칙 §3). 원본에 정답처럼 보이는 파일이 더 있으면 ingest 가 '의심'으로 보고하니, 확인 후 이 목록에 추가할 것."
+}

@@ -1,0 +1,40 @@
+{
+  "name": "model3d-studio",
+  "version": "0.0.0",
+  "private": true,
+  "description": "AI 도면 기반 3D 모델링 웹서비스 — 모노레포 루트",
+  "type": "module",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=22.22.2"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @model3d/web dev",
+    "build": "pnpm --filter @model3d/web build",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "pnpm run lint:web && pnpm run lint:worker",
+    "lint:web": "eslint .",
+    "lint:worker": "uv run --directory apps/worker ruff check . && uv run --directory apps/worker ruff format --check .",
+    "typecheck": "pnpm run typecheck:web && pnpm run typecheck:worker",
+    "typecheck:web": "pnpm -r --if-present typecheck",
+    "typecheck:worker": "uv run --directory apps/worker mypy src tests",
+    "test": "pnpm run test:web && pnpm run test:worker",
+    "test:web": "pnpm -r --if-present test",
+    "test:worker": "uv run --directory apps/worker pytest",
+    "contracts:check": "uv run --directory apps/worker m3d contracts check",
+    "verify:supabase": "scripts/verify-supabase.sh",
+    "check": "pnpm run format:check && pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run contracts:check && pnpm run build"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.4.0",
+    "eslint": "^10.9.1",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.5",
+    "globals": "^17.11.0",
+    "prettier": "^3.9.6",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.68.0"
+  }
+}
