@@ -2282,8 +2282,13 @@ export default defineConfig({
 `tsconfig.node.json`이 `types: ["node"]`를 쓰므로 devDependencies에 `@types/node`를 추가한다:
 
 ```bash
-npm --prefix web install --save-dev @types/node@^22
+npm --prefix web ci --save-dev @types/node@^22
 ```
+
+**주의:** 인자 없는 `npm --prefix web install` 은 이 리포에서 실패한다. npm 은 `--prefix`
+를 적용하기 전에 **현재 디렉터리**의 `package.json` 을 읽는데, 구조 A 는 워크스페이스가
+없어 루트에 `package.json` 이 없다. `npm --prefix web ci` 또는 `cd web` 후 `npm install`
+을 쓴다. `npm --prefix web run <script>` 는 정상 동작한다.
 
 - [ ] **Step 5: `web/index.html` 작성**
 
@@ -2467,7 +2472,7 @@ createRoot(document.getElementById('root')!).render(
 - [ ] **Step 10: 설치 후 타입체크·빌드가 통과함을 확인**
 
 ```powershell
-npm --prefix web install
+npm --prefix web ci
 npm --prefix web run build
 ```
 
@@ -3324,7 +3329,7 @@ Expected 화면:
 4. 웹:
 
    ```powershell
-   npm --prefix web install
+   npm --prefix web ci
    npm --prefix web run dev
    ```
 
