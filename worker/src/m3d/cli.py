@@ -7,6 +7,9 @@ import sys
 import typer
 
 from m3d import doctor as doctor_mod
+from m3d.config import load_config
+from m3d.samples.collect import DATASET, collect, manifest_path
+from m3d.samples.manifest import load_manifest, verify_manifest, write_manifest
 
 app = typer.Typer(help="model3d-studio 워커 CLI", no_args_is_help=True)
 
@@ -41,6 +44,49 @@ def doctor() -> None:
         typer.echo(f"필수 {len(failures)}종 FAIL: {names} — M0 를 완료로 선언하지 마세요.")
     else:
         typer.echo(f"필수 {len(doctor_mod.REQUIRED)}종 PASS.")
+
+
+samples_app = typer.Typer(help="샘플 도면 세트 수집·검증", no_args_is_help=True)
+app.add_typer(samples_app, name="samples")
+
+
+@samples_app.command("collect")
+def samples_collect() -> None:
+    """원본을 data/samples 로 복사하고 매니페스트를 생성한다."""
+    cfg = load_config()
+    manifest = collect(cfg)
+    path = manifest_path(cfg)
+    write_manifest(manifest, path)
+    size_mb = manifest.total_bytes / 1024 / 1024
+    typer.echo(f"데이터셋 {DATASET}: {len(manifest.entries)}파일 / {size_mb:.1f} MB")
+    typer.echo(f"매니페스트: {path}")
+
+
+@samples_app.command("verify")
+def samples_verify() -> None:
+    """매니페스트와 실제 파일을 대조한다. 불일치가 있으면 종료 코드 1."""
+    cfg = load_config()
+    manifest = load_manifest(manifest_path(cfg))
+    report = verify_manifest(manifest, cfg.repo_root)
+
+    if report.ok:
+        typer.echo(f"{report.checked}/{report.checked} SHA256 일치 — PASS")
+        raise typer.Exit(code=0)
+
+    typer.echo(f"검사 {report.checked}개 — FAIL")
+    for label, items in (
+        ("누락", report.missing),
+        ("변조", report.mismatched),
+        ("여분", report.extra),
+    ):
+        if not items:
+            continue
+        typer.echo(f"  {label} {len(items)}개:")
+        for rel_path in items[:10]:
+            typer.echo(f"    {rel_path}")
+        if len(items) > 10:
+            typer.echo(f"    … 외 {len(items) - 10}개")
+    raise typer.Exit(code=1)
 
 
 if __name__ == "__main__":
