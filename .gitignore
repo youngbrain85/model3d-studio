@@ -1,5 +1,94 @@
+# ── 비밀키 ────────────────────────────────────────────────────────────────
+# CLAUDE.md §3: Supabase service key 등은 로컬 .env 전용, 커밋·번들 금지
 .env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ── Node / 웹 ─────────────────────────────────────────────────────────────
 node_modules/
-__pycache__/
+.pnpm-store/
 dist/
+dist-ssr/
+.vite/
+# Vite 가 설정을 번들할 때 남기는 임시 파일
+vite.config.*.timestamp-*
+*.tsbuildinfo
+coverage/
+.eslintcache
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# ── Python / 워커 ─────────────────────────────────────────────────────────
+# uv.lock 과 .python-version 은 재현성의 정본이다 — 반드시 커밋한다.
+__pycache__/
+*.py[cod]
+*.so
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.tox/
+.nox/
+htmlcov/
+.coverage
+.coverage.*
+*.egg-info/
+build/
+
+# ── Supabase 로컬 개발 ────────────────────────────────────────────────────
+supabase/.branches/
+supabase/.temp/
+supabase/.env
+
+# ── 배포 ──────────────────────────────────────────────────────────────────
+.vercel
+.vercel/
+
+# ── 파이프라인 산출물 (재생성 가능 — 커밋하지 않는다) ─────────────────────
+# 도면 원본·페이지 이미지·크롭·GLB·렌더는 용량이 크고 재생성 가능하다.
+# 대신 samples/*/manifest.json 이 무엇이 있어야 하는지를 커밋으로 기록한다.
+samples/**/source/
+samples/**/derived/
+samples/**/answers/
+work/
+out/
+
+# 3D 모델·중간 기하 포맷
 *.glb
+*.gltf
+*.stl
+*.obj
+*.ply
+*.fbx
+*.3ds
+*.step
+*.stp
+*.igs
+*.iges
+
+# CAD 원본 (ODA File Converter 산출물 포함)
+*.dwg
+*.dxf
+
+# 단, 테스트 픽스처는 예외 (작고 재현에 필요)
+!apps/worker/tests/fixtures/**
+!packages/contracts/fixtures/**
+
+# ── 에이전트 도구 ─────────────────────────────────────────────────────────
+# .claude/settings.json 과 .claude/hooks/ 는 팀 공용이므로 커밋한다.
+# 개인 설정만 제외한다.
+.claude/settings.local.json
+
+# ── OS / 에디터 ───────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+~$*
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json

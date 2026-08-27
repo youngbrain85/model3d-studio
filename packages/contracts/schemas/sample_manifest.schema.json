@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://model3d.studio/schemas/sample_manifest.schema.json",
+  "title": "SampleManifest",
+  "description": "샘플 도면 세트 매니페스트 (samples/<set_id>/manifest.json). 원본은 사용자 로컬에만 있으므로(CLAUDE.md §2 — 읽기 전용·수정 금지), 리포에는 '무엇이 있어야 하는가'만 커밋한다. 실제 파일은 .gitignore 된 work/samples/<set_id>/ 로 ingest 된다.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["manifest_version", "set_id", "description", "generated_at", "entries"],
+  "properties": {
+    "manifest_version": { "const": 2 },
+    "set_id": {
+      "description": "샘플 세트 식별자. samples/<set_id>/ 디렉터리명과 일치해야 한다.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]*$"
+    },
+    "description": { "type": "string", "minLength": 1 },
+    "source_hint": {
+      "description": "원본 위치 힌트(참고용). 실제 경로는 .env 의 M3D_SAMPLE_SOURCE_<SET_ID> 로 주입한다.",
+      "type": "string",
+      "default": ""
+    },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "generated_on": {
+      "description": "매니페스트를 만든 호스트 OS. 파일명 정규화 차이(NFC/NFD) 추적용.",
+      "type": ["string", "null"],
+      "default": null
+    },
+    "answers_seal": {
+      "description": "정답 항목들의 봉인. sha256( '\\n'.join('<path>\\0<sha256>') , 경로 오름차순 ). 정답 파일을 고쳐 M3 대조를 통과시키는 일을 막는다 (규칙 §6·§8). 정답이 없으면 null.",
+      "type": ["string", "null"],
+      "pattern": "^[0-9a-f]{64}$",
+      "default": null
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "size", "sha256", "role"],
+        "properties": {
+          "path": {
+            "description": "세트 루트 기준 상대 경로. 항상 POSIX 구분자(/)와 유니코드 NFC 로 정규화해 기록한다. **식별자이지 열 수 있는 경로가 아니다** — NFD 파일시스템(macOS)에서는 이 문자열로 원본이 열리지 않는다.",
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[^/][^\\\\]*$"
+          },
+          "size": { "type": "integer", "minimum": 0 },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "mtime": { "type": ["string", "null"], "format": "date-time" },
+          "role": {
+            "description": "drawing(도면) / photo(현장 사진) / answer(정답 — M3 대조 기준) / doc(참고 문서) / other. answer 만 answers/ 하위로 분리되고 나머지는 source/ 로 간다.",
+            "enum": ["drawing", "photo", "answer", "doc", "other"]
+          },
+          "role_source": {
+            "description": "역할을 어떻게 정했는가. declared = set.json 의 answers 글롭에 명시 선언됨. extension = 확장자 추론. default = 그 외. **role=answer 는 반드시 declared 여야 한다** — 정답을 추측으로 확정하지 않는다 (규칙 §3).",
+            "enum": ["declared", "extension", "default"],
+            "default": "extension"
+          },
+          "matched_by": {
+            "description": "declared 일 때 걸린 글롭 패턴 — 분류의 근거를 남긴다 (규칙 §8).",
+            "type": ["string", "null"],
+            "default": null
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,18 @@
+# 한국어 정본 문서는 줄바꿈이 의미를 가진다 — 자동 재배치 금지
+*.md
+docs/
+CLAUDE.md
+
+# 생성물·잠금파일
+pnpm-lock.yaml
+uv.lock
+dist/
+coverage/
+node_modules/
+.venv/
+packages/contracts/generated/
+samples/**/source/
+samples/**/derived/
+
+# SQL 은 prettier 기본 파서가 없다
+*.sql

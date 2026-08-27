@@ -1,0 +1,160 @@
+{
+  "_comment": "규칙 §6 — 독립 재실측의 기대값은 빌더 코드가 아니라 사양서에서 자체 유도해야 한다.",
+  "schema": "verification_report.schema.json",
+  "valid": [
+    {
+      "id": "ver-001",
+      "build_id": "bld-001",
+      "stage": "self_check",
+      "performed_by": "builder-agent-ab1-s5",
+      "builder_agent": "builder-agent-ab1-s5",
+      "performed_at": "2026-08-27T07:00:00Z",
+      "checks": [
+        {
+          "name": "다이아프램 개수",
+          "kind": "count",
+          "expected": 13,
+          "measured": 13,
+          "tolerance": 0,
+          "unit": "ea",
+          "expected_derived_from": "spec",
+          "method": "node_count",
+          "result": "PASS"
+        },
+        {
+          "name": "그리드 검산",
+          "kind": "grid",
+          "expected": 32500,
+          "measured": 32500,
+          "tolerance": 5,
+          "unit": "mm",
+          "expected_derived_from": "spec",
+          "method": "slice",
+          "result": "PASS"
+        },
+        {
+          "name": "수밀 검사",
+          "kind": "watertight",
+          "expected": true,
+          "measured": true,
+          "tolerance": 0,
+          "unit": "-",
+          "expected_derived_from": "spec",
+          "method": "mesh_query",
+          "result": "PASS"
+        }
+      ],
+      "renders": [],
+      "overall": "PASS",
+      "notes": null
+    },
+    {
+      "id": "ver-002",
+      "build_id": "bld-001",
+      "stage": "independent_remeasure",
+      "performed_by": "verifier-agent-01",
+      "builder_agent": "builder-agent-ab1-s5",
+      "performed_at": "2026-08-27T07:30:00Z",
+      "checks": [
+        {
+          "name": "S5 전장",
+          "kind": "dimension",
+          "expected": 32500,
+          "measured": 32498,
+          "tolerance": 5,
+          "unit": "mm",
+          "expected_derived_from": "spec",
+          "method": "slice",
+          "result": "PASS"
+        }
+      ],
+      "renders": [
+        {
+          "kind": "orthographic",
+          "path": "renders/ab1_s5_ortho.png",
+          "note": "실척 정사영"
+        },
+        {
+          "kind": "context",
+          "path": "renders/ab1_s5_context.png",
+          "note": "인접 구간 스텁 포함"
+        },
+        {
+          "kind": "interior_cut",
+          "path": "renders/ab1_s5_cut.png",
+          "note": null
+        }
+      ],
+      "overall": "PASS",
+      "notes": null
+    },
+    {
+      "id": "ver-003",
+      "build_id": "bld-002",
+      "stage": "independent_remeasure",
+      "performed_by": "verifier-agent-01",
+      "builder_agent": "builder-agent-ab1-s6",
+      "performed_at": "2026-08-27T08:00:00Z",
+      "checks": [
+        {
+          "name": "S6 전장",
+          "kind": "dimension",
+          "expected": 30000,
+          "measured": 29800,
+          "tolerance": 5,
+          "unit": "mm",
+          "expected_derived_from": "spec",
+          "method": "slice",
+          "result": "FAIL"
+        }
+      ],
+      "renders": [],
+      "overall": "FAIL",
+      "notes": "실패는 실패로 보고한다 (규칙 §6)"
+    }
+  ],
+  "invalid": [
+    {
+      "why": "독립 재실측의 기대값을 빌더 코드에서 가져왔다 — 검증이 아니다 (규칙 §6)",
+      "doc": {
+        "id": "ver-004",
+        "build_id": "bld-001",
+        "stage": "independent_remeasure",
+        "performed_by": "verifier-agent-01",
+        "builder_agent": "builder-agent-ab1-s5",
+        "performed_at": "2026-08-27T07:30:00Z",
+        "checks": [
+          {
+            "name": "다이아프램 개수",
+            "kind": "count",
+            "expected": 13,
+            "measured": 13,
+            "tolerance": 0,
+            "unit": "ea",
+            "expected_derived_from": "builder_code",
+            "method": "node_count",
+            "result": "PASS"
+          }
+        ],
+        "renders": [],
+        "overall": "PASS",
+        "notes": null
+      }
+    },
+    {
+      "why": "검사 항목이 없다 — 빈 검증은 검증이 아니다",
+      "doc": {
+        "id": "ver-005",
+        "build_id": "bld-001",
+        "stage": "self_check",
+        "performed_by": "builder-agent-ab1-s5",
+        "builder_agent": "builder-agent-ab1-s5",
+        "performed_at": "2026-08-27T07:00:00Z",
+        "checks": [],
+        "renders": [],
+        "overall": "PASS",
+        "notes": null
+      }
+    }
+  ]
+}

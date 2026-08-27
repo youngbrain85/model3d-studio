@@ -1,0 +1,419 @@
+{
+  "_comment": "규칙 §3·§4 를 스키마로 강제한다. invalid 는 전부 검증기가 **거부해야** 하는 문서다.",
+  "schema": "ambiguity.schema.json",
+  "valid": [
+    {
+      "id": "amb-001",
+      "project_id": "prj-ab1",
+      "item": "S5 다이아프램 간격",
+      "question": "S5 구간 다이아프램 간격이 2500mm 인가 3000mm 인가?",
+      "sheet_refs": [
+        {
+          "sheet_no": "AB1-S-021",
+          "page": 3,
+          "bbox_px": {
+            "x": 1200,
+            "y": 840,
+            "width": 620,
+            "height": 410
+          },
+          "crop_path": "derived/crops/amb-001_a.png",
+          "caption": "단면도 치수선"
+        }
+      ],
+      "options": [
+        {
+          "label": "2500mm",
+          "rationale": "AB1-S-021 단면도 치수 체인 합계와 일치",
+          "source_sheets": ["AB1-S-021"],
+          "model_impact": "S5 구간 다이아프램 13매",
+          "recommended": true
+        },
+        {
+          "label": "3000mm",
+          "rationale": "AB1-S-034 상세도 표기",
+          "source_sheets": ["AB1-S-034"],
+          "model_impact": "S5 구간 다이아프램 11매",
+          "recommended": false
+        }
+      ],
+      "model_impact": "다이아프램 매수와 웨브 보강재 배치가 함께 바뀐다",
+      "allow_unknown": true,
+      "status": "pending",
+      "conflicts_with": [],
+      "reconfirm_count": 0,
+      "created_at": "2026-08-27T05:00:00Z"
+    },
+    {
+      "id": "amb-002",
+      "project_id": "prj-ab1",
+      "item": "S5 다이아프램 간격",
+      "question": "S5 구간 다이아프램 간격이 2500mm 인가 3000mm 인가?",
+      "sheet_refs": [
+        {
+          "sheet_no": "AB1-S-021",
+          "page": 3,
+          "bbox_px": {
+            "x": 10,
+            "y": 10,
+            "width": 100,
+            "height": 100
+          },
+          "crop_path": null,
+          "caption": "단면도"
+        },
+        {
+          "sheet_no": "AB1-S-034",
+          "page": 1,
+          "bbox_px": {
+            "x": 50,
+            "y": 60,
+            "width": 200,
+            "height": 150
+          },
+          "crop_path": null,
+          "caption": "상세도 — 대조용"
+        }
+      ],
+      "options": [
+        {
+          "label": "2500mm",
+          "rationale": "AB1-S-021 단면도 치수 체인 합계와 일치",
+          "source_sheets": ["AB1-S-021"],
+          "model_impact": "S5 구간 다이아프램 13매",
+          "recommended": true
+        },
+        {
+          "label": "3000mm",
+          "rationale": "AB1-S-034 상세도 표기",
+          "source_sheets": ["AB1-S-034"],
+          "model_impact": "S5 구간 다이아프램 11매",
+          "recommended": false
+        }
+      ],
+      "model_impact": "다이아프램 매수와 웨브 보강재 배치가 함께 바뀐다",
+      "allow_unknown": true,
+      "status": "provisional",
+      "conflicts_with": ["amb-001"],
+      "reconfirm_count": 1,
+      "created_at": "2026-08-27T05:00:00Z"
+    }
+  ],
+  "invalid": [
+    {
+      "why": "선택지가 1개 — 규칙 §3 은 2~4개를 요구한다",
+      "doc": {
+        "id": "amb-001",
+        "project_id": "prj-ab1",
+        "item": "S5 다이아프램 간격",
+        "question": "S5 구간 다이아프램 간격이 2500mm 인가 3000mm 인가?",
+        "sheet_refs": [
+          {
+            "sheet_no": "AB1-S-021",
+            "page": 3,
+            "bbox_px": {
+              "x": 1200,
+              "y": 840,
+              "width": 620,
+              "height": 410
+            },
+            "crop_path": "derived/crops/amb-001_a.png",
+            "caption": "단면도 치수선"
+          }
+        ],
+        "options": [
+          {
+            "label": "2500mm",
+            "rationale": "AB1-S-021 단면도 치수 체인 합계와 일치",
+            "source_sheets": ["AB1-S-021"],
+            "model_impact": "S5 구간 다이아프램 13매",
+            "recommended": true
+          }
+        ],
+        "model_impact": "다이아프램 매수와 웨브 보강재 배치가 함께 바뀐다",
+        "allow_unknown": true,
+        "status": "pending",
+        "conflicts_with": [],
+        "reconfirm_count": 0,
+        "created_at": "2026-08-27T05:00:00Z"
+      }
+    },
+    {
+      "why": "선택지가 5개 — 최대 4개",
+      "doc": {
+        "id": "amb-001",
+        "project_id": "prj-ab1",
+        "item": "S5 다이아프램 간격",
+        "question": "S5 구간 다이아프램 간격이 2500mm 인가 3000mm 인가?",
+        "sheet_refs": [
+          {
+            "sheet_no": "AB1-S-021",
+            "page": 3,
+            "bbox_px": {
+              "x": 1200,
+              "y": 840,
+              "width": 620,
+              "height": 410
+            },
+            "crop_path": "derived/crops/amb-001_a.png",
+            "caption": "단면도 치수선"
+          }
+        ],
+        "options": [
+          {
+            "label": "2500mm",
+            "rationale": "AB1-S-021 단면도 치수 체인 합계와 일치",
+            "source_sheets": ["AB1-S-021"],
+            "model_impact": "S5 구간 다이아프램 13매",
+            "recommended": true
+          },
+          {
+            "label": "opt0",
+            "rationale": "AB1-S-021 단면도 치수 체인 합계와 일치",
+            "source_sheets": ["AB1-S-021"],
+            "model_impact": "S5 구간 다이아프램 13매",
+            "recommended": false
+          },
+          {
+            "label": "opt1",
+            "rationale": "AB1-S-021 단면도 치수 체인 합계와 일치",
+            "source_sheets": ["AB1-S-021"],
+            "model_impact": "S5 구간 다이아프램 13매",
+            "recommended": false
+          },
+          {
+            "label": "opt2",
+            "rationale": "AB1-S-021 단면도 치수 체인 합계와 일치",
+            "source_sheets": ["AB1-S-021"],
+            "model_impact": "S5 구간 다이아프램 13매",
+            "recommended": false
+          },
+          {
+            "label": "opt3",
+            "rationale": "AB1-S-021 단면도 치수 체인 합계와 일치",
+            "source_sheets": ["AB1-S-021"],
+            "model_impact": "S5 구간 다이아프램 13매",
+            "recommended": false
+          }
+        ],
+        "model_impact": "다이아프램 매수와 웨브 보강재 배치가 함께 바뀐다",
+        "allow_unknown": true,
+        "status": "pending",
+        "conflicts_with": [],
+        "reconfirm_count": 0,
+        "created_at": "2026-08-27T05:00:00Z"
+      }
+    },
+    {
+      "why": "권장안이 첫 번째가 아니다 — 규칙 §4",
+      "doc": {
+        "id": "amb-001",
+        "project_id": "prj-ab1",
+        "item": "S5 다이아프램 간격",
+        "question": "S5 구간 다이아프램 간격이 2500mm 인가 3000mm 인가?",
+        "sheet_refs": [
+          {
+            "sheet_no": "AB1-S-021",
+            "page": 3,
+            "bbox_px": {
+              "x": 1200,
+              "y": 840,
+              "width": 620,
+              "height": 410
+            },
+            "crop_path": "derived/crops/amb-001_a.png",
+            "caption": "단면도 치수선"
+          }
+        ],
+        "options": [
+          {
+            "label": "3000mm",
+            "rationale": "AB1-S-034 상세도 표기",
+            "source_sheets": ["AB1-S-034"],
+            "model_impact": "S5 구간 다이아프램 11매",
+            "recommended": false
+          },
+          {
+            "label": "2500mm",
+            "rationale": "AB1-S-021 단면도 치수 체인 합계와 일치",
+            "source_sheets": ["AB1-S-021"],
+            "model_impact": "S5 구간 다이아프램 13매",
+            "recommended": true
+          }
+        ],
+        "model_impact": "다이아프램 매수와 웨브 보강재 배치가 함께 바뀐다",
+        "allow_unknown": true,
+        "status": "pending",
+        "conflicts_with": [],
+        "reconfirm_count": 0,
+        "created_at": "2026-08-27T05:00:00Z"
+      }
+    },
+    {
+      "why": "크롭 없는 질문 — 규칙 §4 는 도면 크롭 동반을 강제한다",
+      "doc": {
+        "id": "amb-001",
+        "project_id": "prj-ab1",
+        "item": "S5 다이아프램 간격",
+        "question": "S5 구간 다이아프램 간격이 2500mm 인가 3000mm 인가?",
+        "sheet_refs": [],
+        "options": [
+          {
+            "label": "2500mm",
+            "rationale": "AB1-S-021 단면도 치수 체인 합계와 일치",
+            "source_sheets": ["AB1-S-021"],
+            "model_impact": "S5 구간 다이아프램 13매",
+            "recommended": true
+          },
+          {
+            "label": "3000mm",
+            "rationale": "AB1-S-034 상세도 표기",
+            "source_sheets": ["AB1-S-034"],
+            "model_impact": "S5 구간 다이아프램 11매",
+            "recommended": false
+          }
+        ],
+        "model_impact": "다이아프램 매수와 웨브 보강재 배치가 함께 바뀐다",
+        "allow_unknown": true,
+        "status": "pending",
+        "conflicts_with": [],
+        "reconfirm_count": 0,
+        "created_at": "2026-08-27T05:00:00Z"
+      }
+    },
+    {
+      "why": "선택지에 모델 영향이 없다 — 규칙 §4",
+      "doc": {
+        "id": "amb-001",
+        "project_id": "prj-ab1",
+        "item": "S5 다이아프램 간격",
+        "question": "S5 구간 다이아프램 간격이 2500mm 인가 3000mm 인가?",
+        "sheet_refs": [
+          {
+            "sheet_no": "AB1-S-021",
+            "page": 3,
+            "bbox_px": {
+              "x": 1200,
+              "y": 840,
+              "width": 620,
+              "height": 410
+            },
+            "crop_path": "derived/crops/amb-001_a.png",
+            "caption": "단면도 치수선"
+          }
+        ],
+        "options": [
+          {
+            "label": "2500mm",
+            "rationale": "AB1-S-021 단면도 치수 체인 합계와 일치",
+            "source_sheets": ["AB1-S-021"],
+            "model_impact": "S5 구간 다이아프램 13매",
+            "recommended": true
+          },
+          {
+            "label": "3000mm",
+            "rationale": "AB1-S-034 상세도 표기",
+            "source_sheets": ["AB1-S-034"],
+            "recommended": false
+          }
+        ],
+        "model_impact": "다이아프램 매수와 웨브 보강재 배치가 함께 바뀐다",
+        "allow_unknown": true,
+        "status": "pending",
+        "conflicts_with": [],
+        "reconfirm_count": 0,
+        "created_at": "2026-08-27T05:00:00Z"
+      }
+    },
+    {
+      "why": "권장안이 둘 — 규칙 §4 는 권장안 하나를 첫 번째에 두라고 한다 (options[1..] 은 recommended=false)",
+      "doc": {
+        "id": "amb-001",
+        "project_id": "prj-ab1",
+        "item": "S5 다이아프램 간격",
+        "question": "S5 구간 다이아프램 간격이 2500mm 인가 3000mm 인가?",
+        "sheet_refs": [
+          {
+            "sheet_no": "AB1-S-021",
+            "page": 3,
+            "bbox_px": {
+              "x": 1200,
+              "y": 840,
+              "width": 620,
+              "height": 410
+            },
+            "crop_path": "derived/crops/amb-001_a.png",
+            "caption": "단면도 치수선"
+          }
+        ],
+        "options": [
+          {
+            "label": "2500mm",
+            "rationale": "AB1-S-021 단면도 치수 체인 합계와 일치",
+            "source_sheets": ["AB1-S-021"],
+            "model_impact": "S5 구간 다이아프램 13매",
+            "recommended": true
+          },
+          {
+            "label": "3000mm",
+            "rationale": "AB1-S-034 상세도 표기",
+            "source_sheets": ["AB1-S-034"],
+            "model_impact": "S5 구간 다이아프램 11매",
+            "recommended": true
+          }
+        ],
+        "model_impact": "다이아프램 매수와 웨브 보강재 배치가 함께 바뀐다",
+        "allow_unknown": true,
+        "status": "pending",
+        "conflicts_with": [],
+        "reconfirm_count": 0,
+        "created_at": "2026-08-27T05:00:00Z"
+      }
+    },
+    {
+      "why": "크롭 폭이 0 — 빈 크롭은 질문 카드가 될 수 없다",
+      "doc": {
+        "id": "amb-001",
+        "project_id": "prj-ab1",
+        "item": "S5 다이아프램 간격",
+        "question": "S5 구간 다이아프램 간격이 2500mm 인가 3000mm 인가?",
+        "sheet_refs": [
+          {
+            "sheet_no": "AB1-S-021",
+            "page": 3,
+            "bbox_px": {
+              "x": 1200,
+              "y": 840,
+              "width": 0,
+              "height": 410
+            },
+            "crop_path": "derived/crops/amb-001_a.png",
+            "caption": "단면도 치수선"
+          }
+        ],
+        "options": [
+          {
+            "label": "2500mm",
+            "rationale": "AB1-S-021 단면도 치수 체인 합계와 일치",
+            "source_sheets": ["AB1-S-021"],
+            "model_impact": "S5 구간 다이아프램 13매",
+            "recommended": true
+          },
+          {
+            "label": "3000mm",
+            "rationale": "AB1-S-034 상세도 표기",
+            "source_sheets": ["AB1-S-034"],
+            "model_impact": "S5 구간 다이아프램 11매",
+            "recommended": false
+          }
+        ],
+        "model_impact": "다이아프램 매수와 웨브 보강재 배치가 함께 바뀐다",
+        "allow_unknown": true,
+        "status": "pending",
+        "conflicts_with": [],
+        "reconfirm_count": 0,
+        "created_at": "2026-08-27T05:00:00Z"
+      }
+    }
+  ]
+}

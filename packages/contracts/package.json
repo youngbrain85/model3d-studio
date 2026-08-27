@@ -1,0 +1,29 @@
+{
+  "name": "@model3d/contracts",
+  "version": "0.0.0",
+  "private": true,
+  "description": "워커(Python)와 웹(TS)이 공유하는 데이터 계약 — JSON Schema 가 정본",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./node": {
+      "types": "./src/node.ts",
+      "default": "./src/node.ts"
+    },
+    "./schemas/*.json": "./schemas/*.json"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.0",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.11"
+  }
+}

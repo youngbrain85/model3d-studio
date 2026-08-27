@@ -1,0 +1,151 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://model3d.studio/schemas/verification_report.schema.json",
+  "title": "VerificationReport",
+  "description": "3중 검증 리포트. 규칙 §6 — (1) 빌더 self-check (2) 독립 재실측 (3) 렌더 육안. 검증 없이 완료 주장 금지, 실패는 실패로 보고.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "build_id", "stage", "performed_by", "performed_at", "checks", "overall"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "build_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "stage": {
+      "description": "self_check(빌더 자체) / independent_remeasure(독립 재실측) / render_review(렌더 육안).",
+      "enum": ["self_check", "independent_remeasure", "render_review"]
+    },
+    "performed_by": {
+      "description": "수행 주체. 규칙 §8 — 판독·모델링·검증은 서로 다른 에이전트가 맡는다(자기 검증 금지). independent_remeasure 는 빌더와 달라야 한다.",
+      "type": "string",
+      "minLength": 1
+    },
+    "builder_agent": {
+      "description": "해당 빌드를 만든 에이전트 식별자. independent_remeasure 단계에서 performed_by 와 같으면 자기 검증이므로 무효.",
+      "type": ["string", "null"],
+      "default": null
+    },
+    "performed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "checks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "kind",
+          "expected",
+          "measured",
+          "tolerance",
+          "unit",
+          "expected_derived_from",
+          "method",
+          "result"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "description": "grid(그리드 검산) / count(부재 개수) / elevation(기준 EL·좌표 대조) / watertight(수밀) / dimension(치수).",
+            "enum": ["grid", "count", "elevation", "watertight", "dimension"]
+          },
+          "expected": {
+            "type": ["number", "boolean"]
+          },
+          "measured": {
+            "type": ["number", "boolean"]
+          },
+          "tolerance": {
+            "description": "허용오차. 규칙 §6 — 명시 필수(예: 치수 5mm, 개수 0).",
+            "type": "number",
+            "minimum": 0
+          },
+          "unit": {
+            "enum": ["mm", "m", "ea", "-"]
+          },
+          "expected_derived_from": {
+            "description": "기대값의 출처. 규칙 §6 — 독립 재실측의 기대값은 빌더 코드가 아니라 사양서에서 자체 유도해야 한다.",
+            "enum": ["spec", "builder_code", "drawing"]
+          },
+          "method": {
+            "description": "측정 방법. 규칙 §6 — bbox 중심이 아닌 실면 슬라이스로 측정한다(보강재 편측 부착이 bbox 를 왜곡시킨 실례).",
+            "enum": ["slice", "bbox", "node_count", "mesh_query", "visual"]
+          },
+          "result": {
+            "enum": ["PASS", "FAIL"]
+          }
+        }
+      }
+    },
+    "renders": {
+      "description": "규칙 §6 — 실척 정사영·맥락 렌더(인접 구간 스텁 포함)·내부 컷.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "path"],
+        "properties": {
+          "kind": {
+            "enum": ["orthographic", "context", "interior_cut"]
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "note": {
+            "type": ["string", "null"]
+          }
+        }
+      },
+      "default": []
+    },
+    "overall": {
+      "enum": ["PASS", "FAIL"]
+    },
+    "notes": {
+      "type": ["string", "null"]
+    }
+  },
+  "allOf": [
+    {
+      "description": "규칙 §6 — 독립 재실측의 기대값은 사양서에서 자체 유도해야 한다. 빌더 코드에서 가져온 기대값은 검증이 아니다.",
+      "if": {
+        "type": "object",
+        "properties": {
+          "stage": {
+            "const": "independent_remeasure"
+          }
+        },
+        "required": ["stage"]
+      },
+      "then": {
+        "type": "object",
+        "properties": {
+          "checks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "expected_derived_from": {
+                  "not": {
+                    "const": "builder_code"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://model3d.studio/schemas/member.schema.json",
+  "title": "Member",
+  "description": "부재 노드. 규칙 §5 — 부재 = 독립 노드, 명명 규칙을 정하고 전 부재에 일관 적용한다. 노드명이 곧 객체 DB·망도 연결 키다.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["code", "project_id", "structure", "segment", "member_type", "index"],
+  "properties": {
+    "code": {
+      "description": "부재 노드명. 패턴: <구조물>_<세그먼트>_<부재종류><번호>[<측면>]. 예: AB1_S5_DIA07, AB1_S5_WG097L",
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9]{0,7}_S[0-9]{1,3}_[A-Z]{2,4}[0-9]{1,4}[LRCTB]?$"
+    },
+    "project_id": { "type": "string", "minLength": 1 },
+    "parent_code": {
+      "description": "부재 트리의 상위 노드 code. 최상위는 null.",
+      "type": ["string", "null"],
+      "default": null
+    },
+    "structure": {
+      "description": "구조물 코드. 예: AB1(접속1교)",
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9]{0,7}$"
+    },
+    "segment": {
+      "description": "세그먼트 코드. 예: S5",
+      "type": "string",
+      "pattern": "^S[0-9]{1,3}$"
+    },
+    "member_type": {
+      "description": "부재 종류 코드. 예: DIA(다이아프램), WG(웨브 보강재)",
+      "type": "string",
+      "pattern": "^[A-Z]{2,4}$"
+    },
+    "index": {
+      "description": "부재 번호. 코드 문자열에서는 0 패딩될 수 있다.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "side": {
+      "description": "측면 구분. L(좌)/R(우)/C(중앙)/T(상)/B(하), 없으면 null.",
+      "type": ["string", "null"],
+      "enum": ["L", "R", "C", "T", "B", null],
+      "default": null
+    },
+    "zone": {
+      "description": "규칙 §5 — 반복 부재는 존(zone) 모델로. 구간별 배열 규칙을 데이터로 둔다.",
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["name", "spacing_mm", "count"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "spacing_mm": { "type": "number", "exclusiveMinimum": 0 },
+        "count": { "type": "integer", "minimum": 1 },
+        "start_station": { "type": ["string", "null"] },
+        "transition_note": {
+          "description": "규칙 §5 — 전이 구간은 유력안 채택 + 주석.",
+          "type": ["string", "null"]
+        }
+      },
+      "default": null
+    },
+    "spec_refs": { "type": "array", "items": { "type": "string" }, "default": [] }
+  }
+}

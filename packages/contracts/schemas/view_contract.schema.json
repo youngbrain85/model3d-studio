@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://model3d.studio/schemas/view_contract.schema.json",
+  "title": "ViewContract",
+  "description": "2D 시트 ↔ 3D 모델 좌표 호환 계약. 규칙 §7.\n\n## 정의\n뷰는 3D 공간 안의 유한 직사각형 평면이다.\n  origin ∈ ℝ³ (모델 좌표, m) — 뷰 좌표 (u,v)=(0,0) 에 대응하는 점\n  u_axis, v_axis ∈ ℝ³ — 단위벡터이며 서로 직교해야 한다 (|u_axis|=|v_axis|=1, u_axis·v_axis=0)\n  n = u_axis × v_axis — 뷰 평면의 단위 법선 (오른손 좌표계)\n  u ∈ [0, u_extent], v ∈ [0, v_extent] — 뷰 직사각형의 정의역 (m)\n\n## 정변환 (시트 → 모델)\n  W(u, v) = origin + u·u_axis + v·v_axis\n\n## 역변환 (모델 → 시트)\n  d = P − origin\n  u = d · u_axis,  v = d · v_axis,  h = d · n\n  h 는 평면에서 벗어난 부호 있는 거리(off_plane). 평면 위의 점이면 h = 0.\n\n## 왕복 검산 조건 (셋 다 성립해야 PASS)\n  R1 시트 왕복: 모든 (u,v) 에 대해 ‖역변환(정변환(u,v)) − (u,v)‖ ≤ tolerance_m\n     — |u_axis|=1, |v_axis|=1, u_axis·v_axis=0 일 때에만 성립한다.\n       증명: u' = (u·u_axis + v·v_axis)·u_axis = u·|u_axis|² + v·(u_axis·v_axis).\n       이것이 모든 u,v 에 대해 u 와 같으려면 |u_axis|²=1 이고 u_axis·v_axis=0 이어야 한다. v 도 대칭.\n  R2 모델 왕복: 임의의 P ∈ ℝ³ 에 대해 ‖(origin + u·u_axis + v·v_axis + h·n) − P‖ ≤ tolerance_m\n     — {u_axis, v_axis, n} 이 정규직교기저일 때에만 성립한다. 평면 밖 점의 복원까지 보장한다.\n  R3 픽셀 왕복: pixel_frame 이 있으면 ‖pixelToView(viewToPixel(u,v)) − (u,v)‖ ≤ tolerance_m\n\n검산 없는 뷰 계약은 싣지 않는다 (규칙 §2·§7).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "name", "origin", "u_axis", "v_axis", "u_extent", "v_extent", "unit"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "name": { "type": "string", "minLength": 1 },
+    "sheet_no": {
+      "description": "이 뷰가 대응하는 도면번호(있으면). 표제란 판독값(sheet.sheet_no_from_titleblock)과 일치해야 한다.",
+      "type": ["string", "null"],
+      "default": null
+    },
+    "origin": {
+      "description": "뷰 좌표 (u=0, v=0) 에 대응하는 3D 모델 좌표 (m).",
+      "$ref": "#/$defs/vec3"
+    },
+    "u_axis": {
+      "description": "u 증가 방향의 3D 단위벡터. |u_axis| = 1 이어야 한다 (왕복 검산 R1).",
+      "$ref": "#/$defs/vec3"
+    },
+    "v_axis": {
+      "description": "v 증가 방향의 3D 단위벡터. |v_axis| = 1 이고 u_axis 와 직교해야 한다 (왕복 검산 R1).",
+      "$ref": "#/$defs/vec3"
+    },
+    "u_extent": {
+      "description": "u 방향 범위 길이 (m). 뷰 정의역은 [0, u_extent].",
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "v_extent": {
+      "description": "v 방향 범위 길이 (m). 뷰 정의역은 [0, v_extent].",
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "unit": {
+      "description": "뷰 좌표 단위. 규칙 §1 — 모델은 m 고정. 도면 mm 은 units 모듈에서만 환산한다.",
+      "const": "m"
+    },
+    "pixel_frame": {
+      "description": "시트 이미지 픽셀 좌표와의 대응(있으면).\n뷰 직사각형은 이미지 전체가 아니라 view_bbox_px 영역에 대응한다\n(스캔 시트는 여백·표제란을 포함하므로 전체 대응 가정은 틀린다).\n  sx = view_bbox_px.width / u_extent,  sy = view_bbox_px.height / v_extent   (px per m)\n  px = view_bbox_px.x + u·sx\n  py = view_bbox_px.y + (v_down ? (v_extent − v)·sy : v·sy)\n역변환:\n  u = (px − view_bbox_px.x) / sx\n  v = v_down ? v_extent − (py − view_bbox_px.y)/sy : (py − view_bbox_px.y)/sy",
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["width_px", "height_px", "v_down", "view_bbox_px"],
+      "properties": {
+        "width_px": {
+          "description": "시트 페이지 이미지 전체 폭 (px).",
+          "type": "integer",
+          "exclusiveMinimum": 0
+        },
+        "height_px": {
+          "description": "시트 페이지 이미지 전체 높이 (px).",
+          "type": "integer",
+          "exclusiveMinimum": 0
+        },
+        "v_down": {
+          "description": "이미지 y축이 아래로 증가하는가(일반적인 래스터 관례). true 면 v 와 py 는 반대 방향.",
+          "type": "boolean"
+        },
+        "view_bbox_px": {
+          "description": "뷰 직사각형 [0,u_extent]×[0,v_extent] 가 대응하는 이미지 영역. width_px·height_px 안에 있어야 한다.",
+          "$ref": "#/$defs/bboxPx"
+        },
+        "dpi": {
+          "description": "이미지 해상도(있으면). 도면 척도와의 정합 검산에 쓴다: sx[px/m] ≈ dpi/0.0254 × scale_ratio.",
+          "type": ["number", "null"],
+          "exclusiveMinimum": 0,
+          "default": null
+        }
+      },
+      "default": null
+    },
+    "roundtrip_check": {
+      "description": "왕복 검산 결과. 규칙 §7 — 검산 없는 뷰 계약은 싣지 않는다. R1·R2·R3 를 모두 담는다.",
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": [
+        "sample_count",
+        "tolerance_m",
+        "u_norm_error",
+        "v_norm_error",
+        "orthogonality_error",
+        "max_view_roundtrip_error_m",
+        "max_world_roundtrip_error_m",
+        "result"
+      ],
+      "properties": {
+        "sample_count": {
+          "description": "표본 수. 격자 grid×grid, 최소 2×2 = 4.",
+          "type": "integer",
+          "minimum": 4
+        },
+        "tolerance_m": { "type": "number", "exclusiveMinimum": 0 },
+        "u_norm_error": { "description": "| |u_axis| − 1 |.", "type": "number", "minimum": 0 },
+        "v_norm_error": { "description": "| |v_axis| − 1 |.", "type": "number", "minimum": 0 },
+        "orthogonality_error": {
+          "description": "|u_axis · v_axis|. 0 이어야 한다.",
+          "type": "number",
+          "minimum": 0
+        },
+        "max_view_roundtrip_error_m": {
+          "description": "R1 최대 오차 (m).",
+          "type": "number",
+          "minimum": 0
+        },
+        "max_world_roundtrip_error_m": {
+          "description": "R2 최대 오차 (m).",
+          "type": "number",
+          "minimum": 0
+        },
+        "max_pixel_roundtrip_error_m": {
+          "description": "R3 최대 오차 (m). pixel_frame 이 없으면 null.",
+          "type": ["number", "null"],
+          "minimum": 0,
+          "default": null
+        },
+        "result": { "enum": ["PASS", "FAIL"] }
+      },
+      "default": null
+    }
+  },
+  "$defs": {
+    "vec3": {
+      "description": "3D 벡터 [x, y, z] (모델 단위 m).\n\n고정 길이 3 을 items + minItems/maxItems 로 쓴다. prefixItems(draft 2020-12 정식 튜플 문법)로 쓰지 말 것 —\njson-schema-to-typescript 15.0.4 가 prefixItems 를 지원하지 않아 `never[]` 을 뱉는다(측정 확인).\n이 형태면 TS 는 [number, number, number] 튜플을, Python 은 길이 제약이 붙은 list[float] 을 얻는다.\nTS 쪽에서 튜플성이 실익(인덱싱 타입·three.js 상호운용)이고 Python 은 list 로 충분하므로 손실이 없는 쪽을 택한 것이다.",
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": { "type": "number" }
+    },
+    "bboxPx": {
+      "description": "이미지 픽셀 좌표 박스. 좌상단 원점, x 우측·y 하측 증가.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y", "width", "height"],
+      "properties": {
+        "x": { "type": "number", "minimum": 0 },
+        "y": { "type": "number", "minimum": 0 },
+        "width": { "type": "number", "exclusiveMinimum": 0 },
+        "height": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    }
+  }
+}

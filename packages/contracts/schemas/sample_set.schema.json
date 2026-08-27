@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://model3d.studio/schemas/sample_set.schema.json",
+  "title": "SampleSetDef",
+  "description": "샘플 도면 세트 정의 (samples/<set_id>/set.json). 머신에 독립적인 부분만 담는다 — 실제 원본 경로는 사용자마다 다르므로 .env 의 M3D_SAMPLE_SOURCE_<SET_ID> 로만 주입하며 커밋하지 않는다 (CLAUDE.md §3).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["set_id", "description"],
+  "properties": {
+    "set_id": {
+      "description": "세트 식별자. samples/<set_id>/ 디렉터리명과 일치해야 한다.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]*$"
+    },
+    "description": { "type": "string", "minLength": 1 },
+    "source_hint": {
+      "description": "원본 위치 힌트 — 사용자가 .env 를 채울 때 보는 참고값. 코드는 이 값을 경로로 쓰지 않는다.",
+      "type": "string",
+      "default": ""
+    },
+    "answers": {
+      "description": "정답 데이터(M3 대조 기준)를 고르는 **유일한 근거**. 세트 루트 기준 POSIX glob. 파일명 추측으로 정답을 정하지 않는다 (규칙 §3) — 여기 선언된 것만 role=answer 가 되고 answers/ 로 분리된다.",
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "default": []
+    },
+    "exclude": {
+      "description": "가져오지 않을 파일 (OS 부스러기 기본 목록에 더해지는 세트별 추가분).",
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "default": []
+    },
+    "notes": { "type": ["string", "null"], "default": null }
+  }
+}

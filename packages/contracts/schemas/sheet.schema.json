@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://model3d.studio/schemas/sheet.schema.json",
+  "title": "Sheet",
+  "description": "도면 시트 카탈로그 항목. 규칙 §3 — 표제란 전수 대조 먼저. 파일명·폴더명은 내용을 보장하지 않는다(편철 오류 실례 있음).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "project_id", "file_name", "page", "titleblock_match"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "project_id": { "type": "string", "minLength": 1 },
+    "file_name": { "type": "string", "minLength": 1 },
+    "page": { "type": "integer", "minimum": 1 },
+    "sheet_no_from_titleblock": {
+      "description": "시트 내부 표제란 텍스트에서 읽은 도면번호 — 정본.",
+      "type": ["string", "null"]
+    },
+    "sheet_no_from_filename": {
+      "description": "파일명/폴더명에서 유추한 도면번호 — 참고값일 뿐 근거가 아니다.",
+      "type": ["string", "null"]
+    },
+    "titleblock_match": {
+      "description": "기계 대조 결과. mismatch 만 사람이 본다(규칙 §3).",
+      "enum": ["match", "mismatch", "unreadable", "filename_only"]
+    },
+    "title": { "type": ["string", "null"] },
+    "scale": { "type": ["string", "null"], "description": "예: 1/100, NONE" },
+    "classification": {
+      "description": "부재·섹션별 분류 (파이프라인 [3]).",
+      "type": ["string", "null"]
+    },
+    "coverage": {
+      "description": "이 시트가 커버하는 구간. 규칙 §3 — 시트 하단 요약도(키플랜)의 해치로 확정하되, 요약도 라벨이 아닌 본문 좌표 표기만 근거로 쓴다.",
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["source"],
+      "properties": {
+        "station_from": { "type": ["string", "null"] },
+        "station_to": { "type": ["string", "null"] },
+        "description": { "type": ["string", "null"] },
+        "source": {
+          "description": "커버리지 근거. keyplan_hatch(요약도 해치) / body_annotation(본문 좌표 표기). keyplan_label 은 오탐 원인이므로 허용하지 않는다.",
+          "enum": ["keyplan_hatch", "body_annotation"]
+        }
+      },
+      "default": null
+    },
+    "image_path": {
+      "type": ["string", "null"],
+      "description": "시트별 고해상 PNG 경로 (파이프라인 [2])"
+    },
+    "text_path": {
+      "type": ["string", "null"],
+      "description": "추출된 sheet_text 경로 (파이프라인 [2])"
+    },
+    "source_format": { "enum": ["pdf", "dxf", "dwg", "image"] }
+  }
+}

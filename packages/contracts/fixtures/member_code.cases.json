@@ -1,0 +1,90 @@
+{
+  "_comment": "부재 명명 규칙 교차 언어 검증. 규칙 §5 — 노드명이 곧 객체 DB·망도 연결 키다.",
+  "pattern": "^[A-Z][A-Z0-9]{0,7}_S[0-9]{1,3}_[A-Z]{2,4}[0-9]{1,4}[LRCTB]?$",
+  "valid": [
+    {
+      "code": "AB1_S5_DIA07",
+      "structure": "AB1",
+      "segment": "S5",
+      "member_type": "DIA",
+      "index": 7,
+      "side": null,
+      "index_width": 2
+    },
+    {
+      "code": "AB1_S5_WG097L",
+      "structure": "AB1",
+      "segment": "S5",
+      "member_type": "WG",
+      "index": 97,
+      "side": "L",
+      "index_width": 3
+    },
+    {
+      "code": "P4_S12_STF001R",
+      "structure": "P4",
+      "segment": "S12",
+      "member_type": "STF",
+      "index": 1,
+      "side": "R",
+      "index_width": 3
+    },
+    {
+      "code": "AB1_S5_DIAL07",
+      "structure": "AB1",
+      "segment": "S5",
+      "member_type": "DIAL",
+      "index": 7,
+      "side": null,
+      "index_width": 2,
+      "_note": "부재종류가 4글자면 마지막 글자가 측면 코드로 해석되지 않는다 — 탐욕적 매칭이 TS·Python 양쪽에서 같아야 한다"
+    },
+    {
+      "code": "AB1_S999_GIR9999B",
+      "structure": "AB1",
+      "segment": "S999",
+      "member_type": "GIR",
+      "index": 9999,
+      "side": "B",
+      "index_width": 4
+    }
+  ],
+  "invalid": [
+    {
+      "code": "ab1_s5_dia07",
+      "why": "소문자 — 명명 규칙은 대문자 고정"
+    },
+    {
+      "code": "AB1_5_DIA07",
+      "why": "세그먼트는 S 접두사 필수"
+    },
+    {
+      "code": "AB1_S5_D07",
+      "why": "부재종류는 2~4 글자"
+    },
+    {
+      "code": "AB1_S5_DIA",
+      "why": "번호 누락"
+    },
+    {
+      "code": "AB1_S5_DIA07X",
+      "why": "X 는 측면 코드가 아님 (L/R/C/T/B)"
+    },
+    {
+      "code": "AB1_S5_DIA00007",
+      "why": "번호는 최대 4자리"
+    },
+    {
+      "code": "AB1_S5",
+      "why": "부재 성분 누락"
+    },
+    {
+      "code": "AB1__DIA07",
+      "why": "세그먼트 비어 있음"
+    },
+    {
+      "code": "AB1_S5_DIA07 ",
+      "why": "후행 공백"
+    }
+  ]
+}
