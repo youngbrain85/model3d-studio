@@ -40,7 +40,10 @@ def test_rls_enabled_on_every_table(norm):
 
 def test_one_select_policy_per_table(sql, norm):
     assert sql.count('create policy "authenticated read"') == len(TABLES)
-    assert "to authenticated" in norm
+    # FOR 절까지 통째로 고정한다. "to authenticated" 문자열 존재만 확인하면
+    # for select 가 for all/insert/update 로 넓어져도 이 테스트는 계속 통과한다 —
+    # 그러면 읽기 전용이라는 이 마일스톤의 RLS 증명 자체가 조용히 깨진다.
+    assert norm.count("for select to authenticated using (true)") == len(TABLES)
     assert "to anon" not in norm, "anon 에게 정책을 주면 RLS 증명이 무너진다"
 
 
