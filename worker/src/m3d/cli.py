@@ -11,6 +11,7 @@ from m3d import doctor as doctor_mod
 from m3d.config import load_config
 from m3d.samples.collect import DATASET, collect, manifest_path
 from m3d.samples.manifest import load_manifest, verify_manifest, write_manifest
+from m3d.seed import ab1_p4p5 as seed_mod
 
 app = typer.Typer(help="model3d-studio 워커 CLI", no_args_is_help=True)
 
@@ -124,6 +125,22 @@ def db_check() -> None:
         typer.echo("좌표계: " + json.dumps(project["coord_system"], ensure_ascii=False, indent=2))
         for note in project["coord_assumptions"]:
             typer.echo(f"가정·정정: {note}")
+
+
+@app.command()
+def seed(
+    dataset: str = typer.Argument(..., help="데이터셋 슬러그 (예: ab1-p4p5)"),
+    reseed: bool = typer.Option(False, "--reseed", help="기존 프로젝트를 지우고 다시 넣는다"),
+) -> None:
+    """샘플 세트를 projects/sheets/sheet_pages/assets 에 등재한다."""
+    if dataset != DATASET:
+        typer.echo(f"알 수 없는 데이터셋: {dataset} (현재 지원: {DATASET})")
+        raise typer.Exit(code=1)
+
+    cfg = load_config()
+    counts = seed_mod.seed(cfg, reseed=reseed)
+    for table, count in counts.items():
+        typer.echo(f"{table:<13} {count:>5}")
 
 
 if __name__ == "__main__":
