@@ -17,6 +17,9 @@ function Invoke-Step {
         [string]$FailPattern = $null
     )
     Write-Host "`n=== $Label ===" -ForegroundColor Cyan
+    # 네이티브 exe 가 아예 실행되지 못하면 $LASTEXITCODE 는 갱신되지 않고 이전 스텝의
+    # 값을 그대로 들고 있어 이 스텝이 거짓으로 통과할 수 있다 — 실행 직전에 초기화한다.
+    $global:LASTEXITCODE = 0
     if ($FailPattern) {
         $out = & $Body
         $out | ForEach-Object { Write-Host $_ }
@@ -28,7 +31,7 @@ function Invoke-Step {
     } else {
         & $Body
     }
-    if ($LASTEXITCODE -ne 0) {
+    if ($LASTEXITCODE -ne 0 -or -not $?) {
         $script:failed += $Label
         Write-Host "FAIL: $Label" -ForegroundColor Red
     }

@@ -269,7 +269,7 @@ m3d seed ab1-p4p5         # 매니페스트 + _manifest.txt → 4테이블 시�
 | 구분 | 패키지 | FAIL 시 |
 |---|---|---|
 | **필수 6종** | `ezdxf` `fitz`(PyMuPDF) `trimesh` `numpy` `matplotlib` `psycopg` | **M0 미완료** — 사용자에게 보고하고 대안(py3.11 등) 검토 |
-| **선택 1종** | `manifold3d` | 경고로 기록하고 M0는 통과. §1-2에서 확인했듯 참조 빌더는 불리언을 회피해 이 패키지를 쓰지 않는다. M2·M3에서 불리언이 실제로 필요해지는 시점에 재검토 |
+| **선택 2종** | `manifold3d` `claude_agent_sdk` | 경고로 기록하고 M0는 통과. §1-2에서 확인했듯 참조 빌더는 불리언을 회피해 manifold3d를 쓰지 않는다. M2·M3에서 불리언이 실제로 필요해지는 시점에 재검토 |
 
 ### 6-2. `collect`의 원본 보호
 
@@ -319,9 +319,11 @@ M2·M3에서 뷰 계약·GLB 로더를 이식할 때 버전 차이로 생기는 
 화면은 헬스 1개(`routes/Health.tsx`):
 
 - Supabase 도달 여부
-- 익명 세션 상태
 - `select from projects` 결과 행 수 — **0행이 정상**(RLS 차단). 에러 없이 0행이면
   "연결 OK · RLS 차단 정상"으로 표시한다.
+
+(익명 여부는 별도 표시하지 않는다 — authenticated 정책이 select 를 허용하므로, 0행
+자체가 익명임의 증거다. 세션 표시는 M2 인증 도입 때 추가.)
 
 기대 동작이 "권한 에러"가 아니라 "빈 결과"인 이유: Supabase는 `public` 스키마에
 `anon`·`authenticated` 역할의 테이블 권한을 기본 부여하므로 SELECT 자체는 통과하고,
@@ -358,7 +360,7 @@ RLS 정책이 행을 걸러 빈 배열이 돌아온다. 따라서 헬스 화면�
 | 7 | `pytest` | 매니페스트·`_manifest.txt` 파서 단위테스트 통과 |
 | 8 | `npm run dev` | 헬스 화면 "도달 OK / projects 0행(RLS 차단)" → **스크린샷 캡처** |
 
-5·6(service key로 다수 행이 보임)과 8(anon으로 0행)을 나란히 두면 RLS가 실제로
+5·6(DB 직결 — `postgres` 역할의 BYPASSRLS)과 8(anon으로 0행)을 나란히 두면 RLS가 실제로
 막고 있음이 증명된다. 8의 스크린샷은 전역 규칙 §2("검증 시 영상/화면 캡처 대조")의 이행이다.
 
 ### 테스트 (TDD 대상)

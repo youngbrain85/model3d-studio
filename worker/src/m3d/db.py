@@ -94,7 +94,9 @@ def check(cfg: Config) -> dict:
             counts[table] = cur.fetchone()[0]
 
         cur.execute(
-            "select relname, relrowsecurity from pg_class where relname = any(%s)",
+            "select c.relname, c.relrowsecurity "
+            "from pg_class c join pg_namespace n on n.oid = c.relnamespace "
+            "where n.nspname = 'public' and c.relname = any(%s)",
             (list(TABLES),),
         )
         rls = {name: enabled for name, enabled in cur.fetchall()}

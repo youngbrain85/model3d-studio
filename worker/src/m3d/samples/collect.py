@@ -10,6 +10,8 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
+import typer
+
 from m3d.config import DXF_SUBDIR, PACKAGE_SUBDIR, Config
 from m3d.samples.manifest import Manifest, ManifestEntry, sha256_file
 from m3d.samples.source_manifest import (
@@ -146,5 +148,5 @@ def collect(cfg: Config) -> Manifest:
         entries.append(entry)
         copied_count += int(copied)
 
-    print(f"복사 {copied_count}개 / 건너뜀 {len(planned) - copied_count}개")
+    typer.echo(f"복사 {copied_count}개 / 건너뜀 {len(planned) - copied_count}개")
     return Manifest(dataset=DATASET, entries=tuple(entries))
