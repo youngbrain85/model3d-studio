@@ -6,6 +6,7 @@ import sys
 
 import typer
 
+from m3d import db as db_mod
 from m3d import doctor as doctor_mod
 from m3d.config import load_config
 from m3d.samples.collect import DATASET, collect, manifest_path
@@ -87,6 +88,42 @@ def samples_verify() -> None:
         if len(items) > 10:
             typer.echo(f"    … 외 {len(items) - 10}개")
     raise typer.Exit(code=1)
+
+
+db_app = typer.Typer(help="Supabase 스키마 적용·확인", no_args_is_help=True)
+app.add_typer(db_app, name="db")
+
+
+@db_app.command("apply")
+def db_apply() -> None:
+    """supabase/migrations/*.sql 을 순서대로 적용한다."""
+    cfg = load_config()
+    applied = db_mod.apply_migrations(cfg)
+    if applied:
+        typer.echo(f"적용 {len(applied)}건: {', '.join(applied)}")
+    else:
+        typer.echo("적용할 마이그레이션이 없습니다 (모두 반영됨).")
+
+
+@db_app.command("check")
+def db_check() -> None:
+    """테이블 행 수·RLS 상태·프로젝트 좌표계를 출력한다."""
+    import json
+
+    cfg = load_config()
+    result = db_mod.check(cfg)
+
+    typer.echo("테이블        행수   RLS")
+    typer.echo("-" * 32)
+    for table in db_mod.TABLES:
+        rls = "on" if result["rls"].get(table) else "OFF"
+        typer.echo(f"{table:<13} {result['counts'][table]:>5}   {rls}")
+
+    for project in result["projects"]:
+        typer.echo(f"\n프로젝트 {project['slug']} — {project['name']}")
+        typer.echo("좌표계: " + json.dumps(project["coord_system"], ensure_ascii=False, indent=2))
+        for note in project["coord_assumptions"]:
+            typer.echo(f"가정·정정: {note}")
 
 
 if __name__ == "__main__":
