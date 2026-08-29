@@ -173,7 +173,13 @@ Expected: `적용 1건: 0002_convert`. 재실행 시 `적용할 마이그레이�
 - [ ] **Step 10: 적용 확인 (kind='text' 삽입이 통과하는지는 Task 6에서 실증 — 여기선 제약 존재만)**
 
 ```powershell
-$env:PYTHONUTF8='1'; .\worker\.venv\Scripts\python.exe -c "from m3d.config import load_config; import psycopg; cfg=load_config(); conn=psycopg.connect(cfg.require_db_url()); cur=conn.cursor(); cur.execute(\"select pg_get_constraintdef(oid) from pg_constraint where conname='assets_kind_check'\"); print(cur.fetchone()[0]); conn.close()"
+$env:PYTHONUTF8='1'; & .\worker\.venv\Scripts\python.exe -c 'import psycopg
+from m3d.config import load_config
+cfg = load_config()
+with psycopg.connect(cfg.require_db_url()) as conn, conn.cursor() as cur:
+    cur.execute("select pg_get_constraintdef(oid) from pg_constraint where conname=''assets_kind_check''")
+    print(cur.fetchone()[0])'
+# 주의: PS 5.1 은 큰따옴표 안 \" 를 이스케이프로 안 받는다 — 외따옴표(내부 '' 이스케이프) 패턴 사용
 ```
 
 Expected: 출력에 `'text'` 포함.
@@ -1634,7 +1640,15 @@ Expected: 50건 전부 `스킵(동일)`, 수 분 내 완료.
 - [ ] **Step 8: DB 반영 확인**
 
 ```powershell
-$env:PYTHONUTF8='1'; .\worker\.venv\Scripts\python.exe -c "from m3d.config import load_config; import psycopg; cfg=load_config(); conn=psycopg.connect(cfg.require_db_url()); cur=conn.cursor(); cur.execute(\"select count(*) from sheet_pages where width_px is not null\"); print('sheet_pages 크기 채움:', cur.fetchone()[0]); cur.execute(\"select kind, count(*) from assets where rel_path like 'data/derived/%' group by kind order by 1\"); print('derived assets:', cur.fetchall()); conn.close()"
+$env:PYTHONUTF8='1'; & .\worker\.venv\Scripts\python.exe -c 'import psycopg
+from m3d.config import load_config
+cfg = load_config()
+with psycopg.connect(cfg.require_db_url()) as conn, conn.cursor() as cur:
+    cur.execute("select count(*) from sheet_pages where width_px is not null")
+    print("sheet_pages 크기 채움:", cur.fetchone()[0])
+    cur.execute("select kind, count(*) from assets where rel_path like ''data/derived/%'' group by kind order by 1")
+    print("derived assets:", cur.fetchall())'
+
 ```
 
 Expected: `sheet_pages 크기 채움: 61` / `derived assets: [('png', 61), ('text', 61)]`
@@ -2288,7 +2302,13 @@ Expected: 기존 표(1/50/61/112+122 assets, RLS on ×4)에 더해
 unreadable 1건의 `*_from_content` NULL 유지 확인:
 
 ```powershell
-$env:PYTHONUTF8='1'; .\worker\.venv\Scripts\python.exe -c "from m3d.config import load_config; import psycopg; cfg=load_config(); conn=psycopg.connect(cfg.require_db_url()); cur=conn.cursor(); cur.execute(\"select drawing_no_from_content, title_from_content, scale_from_content from sheets where catalog_status='unreadable'\"); print('unreadable NULL 유지:', cur.fetchall()); conn.close()"
+$env:PYTHONUTF8='1'; & .\worker\.venv\Scripts\python.exe -c 'import psycopg
+from m3d.config import load_config
+cfg = load_config()
+with psycopg.connect(cfg.require_db_url()) as conn, conn.cursor() as cur:
+    cur.execute("select drawing_no_from_content, title_from_content, scale_from_content from sheets where catalog_status=''unreadable''")
+    print("unreadable NULL 유지:", cur.fetchall())'
+
 ```
 
 Expected: `[(None, None, None)]`
