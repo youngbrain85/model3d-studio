@@ -102,6 +102,22 @@ def check(cfg: Config) -> dict:
         rls = {name: enabled for name, enabled in cur.fetchall()}
 
         cur.execute(
+            "select catalog_status, count(*) from sheets group by catalog_status"
+        )
+        catalog_status_counts = dict(cur.fetchall())
+
+        cur.execute(
+            "select count(*) from sheets where drawing_no_from_content is not null"
+        )
+        from_content_filled = cur.fetchone()[0]
+
+        cur.execute(
+            "select count(*) from sheet_pages "
+            "where width_px is not null and height_px is not null"
+        )
+        pages_sized = cur.fetchone()[0]
+
+        cur.execute(
             "select slug, name, coord_system, coord_assumptions "
             "from projects order by slug"
         )
@@ -115,4 +131,7 @@ def check(cfg: Config) -> dict:
             for slug, name, coord_system, coord_assumptions in cur.fetchall()
         ]
 
-    return {"counts": counts, "rls": rls, "projects": projects}
+    return {"counts": counts, "rls": rls, "projects": projects,
+            "catalog_status_counts": catalog_status_counts,
+            "from_content_filled": from_content_filled,
+            "pages_sized": pages_sized}

@@ -8,6 +8,7 @@ import typer
 
 from m3d import db as db_mod
 from m3d import doctor as doctor_mod
+from m3d.catalog import run as catalog_run
 from m3d.config import load_config
 from m3d.convert import run as convert_run
 from m3d.samples.collect import DATASET, collect, manifest_path
@@ -121,6 +122,13 @@ def db_check() -> None:
         rls = "on" if result["rls"].get(table) else "OFF"
         typer.echo(f"{table:<13} {result['counts'][table]:>5}   {rls}")
 
+    if result["catalog_status_counts"]:
+        dist = " / ".join(f"{k} {v}" for k, v in
+                          sorted(result["catalog_status_counts"].items()))
+        typer.echo(f"\ncatalog_status: {dist}")
+        typer.echo(f"from_content 채움: {result['from_content_filled']} · "
+                   f"페이지 크기 채움: {result['pages_sized']}")
+
     for project in result["projects"]:
         typer.echo(f"\n프로젝트 {project['slug']} — {project['name']}")
         typer.echo("좌표계: " + json.dumps(project["coord_system"], ensure_ascii=False, indent=2))
@@ -156,6 +164,16 @@ def convert(
     cfg = load_config()
     raise typer.Exit(code=convert_run.run_convert(
         cfg, dataset, force=force, workers=workers, compare=compare))
+
+
+@app.command()
+def catalog(
+    dataset: str = typer.Argument(..., help="데이터셋 슬러그 (예: ab1-p4p5)"),
+    force: bool = typer.Option(False, "--force", help="값이 같아도 재기록"),
+) -> None:
+    """[3] 표제란 추출 → 파일명과 기계 대조 → catalog_status (설계서 §6)."""
+    cfg = load_config()
+    raise typer.Exit(code=catalog_run.run_catalog(cfg, dataset, force=force))
 
 
 if __name__ == "__main__":
