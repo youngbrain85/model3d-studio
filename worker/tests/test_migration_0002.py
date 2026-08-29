@@ -26,8 +26,8 @@ def test_discovered_in_order():
 
 
 def test_drops_then_recreates_kind_check(norm):
-    assert "drop constraint assets_kind_check" in norm
-    assert "add constraint assets_kind_check" in norm
+    assert "alter table assets drop constraint assets_kind_check" in norm
+    assert "alter table assets add constraint assets_kind_check" in norm
 
 
 def test_new_kind_list_includes_text(norm):
