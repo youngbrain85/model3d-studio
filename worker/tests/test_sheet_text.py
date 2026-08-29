@@ -83,3 +83,15 @@ def test_write_roundtrip_utf8(tmp_path, doc):
     write_sheet_text(payload, path)
     raw = path.read_text(encoding="utf-8")
     assert json.loads(raw) == payload
+
+
+def test_dimension_text_collected_as_dim_kind():
+    """DIMENSION 지오메트리 블록의 치수 문자열 — kind=DIM 경로가 죽으면 잡는다."""
+    d = ezdxf.new("R2018")
+    msp = d.modelspace()
+    dim = msp.add_linear_dim(base=(0, 500.0), p1=(0, 0), p2=(2800.0, 0))
+    dim.render()   # 지오메트리 블록 생성 — 이게 없으면 geometry 속성이 비어 있다
+    texts = collect_texts(d)
+    dims = [t for t in texts if t.kind == "DIM"]
+    assert len(dims) >= 1
+    assert any("2800" in t.text.replace(",", "") for t in dims)
