@@ -9,6 +9,7 @@ import typer
 from m3d import db as db_mod
 from m3d import doctor as doctor_mod
 from m3d.config import load_config
+from m3d.convert import run as convert_run
 from m3d.samples.collect import DATASET, collect, manifest_path
 from m3d.samples.manifest import load_manifest, verify_manifest, write_manifest
 from m3d.seed import ab1_p4p5 as seed_mod
@@ -141,6 +142,20 @@ def seed(
     counts = seed_mod.seed(cfg, reseed=reseed)
     for table, count in counts.items():
         typer.echo(f"{table:<13} {count:>5}")
+
+
+@app.command()
+def convert(
+    dataset: str = typer.Argument(..., help="데이터셋 슬러그 (예: ab1-p4p5)"),
+    force: bool = typer.Option(False, "--force", help="산출물이 있어도 재렌더"),
+    workers: int = typer.Option(4, "--workers", help="병렬 워커 수"),
+    compare: bool = typer.Option(True, "--compare/--no-compare",
+                                 help="기존 샘플 PNG 와 지각 해시 회귀 대조"),
+) -> None:
+    """[2] DXF → 페이지 PNG + sheet_text JSON, DB 반영 (설계서 §3)."""
+    cfg = load_config()
+    raise typer.Exit(code=convert_run.run_convert(
+        cfg, dataset, force=force, workers=workers, compare=compare))
 
 
 if __name__ == "__main__":
