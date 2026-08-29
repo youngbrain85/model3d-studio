@@ -7,5 +7,6 @@ dist/
 .superpowers/
 worker/.venv/
 data/samples/
+data/derived/
 .pytest_cache/
 *.egg-info/

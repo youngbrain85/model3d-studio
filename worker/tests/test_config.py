@@ -56,6 +56,13 @@ def test_repo_paths_are_under_repo_root(tmp_path, absent_env, monkeypatch):
     assert cfg.migrations_dir == cfg.repo_root / "supabase" / "migrations"
 
 
+def test_derived_dir_is_under_repo_root(tmp_path, absent_env, monkeypatch):
+    """M1 산출물 루트 — 재생성 가능물이라 gitignore 대상이다."""
+    monkeypatch.setenv("SAMPLE_SOURCE_DIR", str(tmp_path))
+    cfg = load_config(env_file=absent_env)
+    assert cfg.derived_dir == cfg.repo_root / "data" / "derived"
+
+
 def test_repo_root_contains_claude_md(tmp_path, absent_env, monkeypatch):
     """REPO_ROOT 계산이 어긋나면 이후 모든 경로가 조용히 틀어진다."""
     monkeypatch.setenv("SAMPLE_SOURCE_DIR", str(tmp_path))

@@ -50,6 +50,10 @@ class Config:
     def migrations_dir(self) -> Path:
         return self.repo_root / "supabase" / "migrations"
 
+    @property
+    def derived_dir(self) -> Path:
+        return self.repo_root / "data" / "derived"
+
     # ── 원본 경로 (읽기 전용) ───────────────────────────────────────
     @property
     def package_dir(self) -> Path:
