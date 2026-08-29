@@ -19,10 +19,14 @@ from m3d.config import Config
 from m3d.samples.manifest import sha256_file
 from m3d.samples.source_manifest import SourceSheet, png_filenames
 
-# 2026-08-29 실측: 61쌍 분포 최대 2·평균 0.11 (compare_report.json) — 61쌍 전부
-# 해밍거리 0~2 에 몰려 있다(히스토그램 버킷 0~3 하나에 전부 포함, 중앙값 0).
-# → 경고 임계 = 최대 + 8. 렌더러 계열이 같아 분포가 낮게 몰린다.
-DHASH_WARN: int | None = 10
+# 회귀 대조 경고 임계 (dHash 해밍 거리, 256비트).
+# 이 가드는 '고정된 파일명 쌍'의 렌더러 드리프트를 감지한다 — 쌍 매핑 자체는
+# test_regression_pairs_maps_to_sample_names 가 고정한다. 시트 구별 용도가 아니다:
+# 2026-08-29 실측 크로스시트 최저 거리가 2 (1,830쌍, 중앙값 89)라 어떤 임계로도
+# '같은 시트 vs 닮은 다른 시트' 는 못 가른다.
+# 동일쌍 실측 분포: 61쌍 중 0×56 · 1×3 · 2×2 (최대 2) → 임계 = 4 (최대+2).
+# 이를 넘는 드리프트는 렌더러/폰트 변경 신호이므로 육안 확인 대상이다.
+DHASH_WARN: int | None = 4
 
 
 @dataclass(frozen=True)
@@ -226,7 +230,10 @@ def run_convert(cfg: Config, dataset: str, *, force: bool = False,
             for job, res in results:
                 for p in res["pages"]:
                     sheet_id = sheet_ids[job.ord]
-                    page_id = page_ids.get((job.ord, p["page_no"]))
+                    key = (job.ord, p["page_no"])
+                    if key not in page_ids:
+                        raise KeyError(f"sheet_pages 에 없는 페이지: {key} — seed 와 도곽 수 불일치")
+                    page_id = page_ids[key]
                     cur.execute(
                         "update sheet_pages set width_px=%s, height_px=%s where id=%s",
                         (p["w"], p["h"], page_id),

@@ -33,5 +33,5 @@ def extract_titleblocks(doc) -> list[TitleBlock]:
             subtitle=tags.get("DI_SUBTITLE", ""),
             scale=tags.get("DA_HSCALE", ""),
         )))
-    found.sort(key=lambda t: (t[0], t[1]))   # 페이지 순서: y 내림, x 오름 (frames 와 동일)
+    found.sort(key=lambda t: (t[0], t[1]))   # 페이지 순서: y 내림, x 오름 — frames 와 같은 키 형태. 단 기준점이 다르다(여기는 INSERT 점, frames 는 bbox 모서리) — 도곽 블록 원점이 모서리가 아니면 어긋날 수 있음(현 데이터셋 50건은 일치 확인).
     return [t[2] for t in found]

@@ -101,7 +101,11 @@ app.add_typer(db_app, name="db")
 def db_apply() -> None:
     """supabase/migrations/*.sql 을 순서대로 적용한다."""
     cfg = load_config()
-    applied = db_mod.apply_migrations(cfg)
+    try:
+        applied = db_mod.apply_migrations(cfg)
+    except db_mod.MigrationError as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(code=1)
     if applied:
         typer.echo(f"적용 {len(applied)}건: {', '.join(applied)}")
     else:

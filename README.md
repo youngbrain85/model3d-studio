@@ -18,6 +18,7 @@
 | `data/manifests/` | 샘플 SHA256 매니페스트 (커밋) |
 | `data/fixtures/` | 정답지·카탈로그 사본 (커밋) |
 | `data/samples/` | 도면 원본 사본 413MB (**gitignore**) |
+| `data/derived/` | 변환 산출물 — 페이지 PNG·sheet_text·리포트 (**gitignore**) |
 
 ## 시작하기
 
@@ -34,6 +35,8 @@
    .\worker\.venv\Scripts\m3d.exe samples collect
    .\worker\.venv\Scripts\m3d.exe db apply
    .\worker\.venv\Scripts\m3d.exe seed ab1-p4p5
+   .\worker\.venv\Scripts\m3d.exe convert ab1-p4p5
+   .\worker\.venv\Scripts\m3d.exe catalog ab1-p4p5
    ```
 
 4. 웹:

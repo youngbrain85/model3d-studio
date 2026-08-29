@@ -126,7 +126,9 @@ worker/src/m3d/
 - `fallback=true`(도곽 미검출)면 `paper_mm`은 world bbox 크기, `scale`은 null.
 - 좌표는 **용지 mm** — 지식베이스 §4의 "원본 픽셀 좌표" 크롭은 M2에서
   `SheetFrame` 변환(mm→px)으로 유도한다. PNG 픽셀과 mm의 환산 계수는
-  JSON의 `paper_mm`과 PNG 크기에서 나온다.
+  JSON의 `paper_mm`과 PNG 크기에서 나온다. 회전 시트(rotation_deg 90/270)는 PNG 가
+  world 방향이므로 paper_mm 축이 **전치**된다 — M2 크롭은 SheetFrame.paper_to_world
+  를 쓰면 이 문제가 없다(현 데이터셋 61페이지는 전부 rotation 0).
 
 ## 6. 대조 판정 (`reconcile.py`) — 지식베이스 §3의 구현
 
