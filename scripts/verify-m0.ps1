@@ -8,16 +8,33 @@ $python = Join-Path $root 'worker\.venv\Scripts\python.exe'
 $failed = @()
 
 function Invoke-Step {
-    param([string]$Label, [scriptblock]$Body)
+    param(
+        [string]$Label,
+        [scriptblock]$Body,
+        # doctor 는 설계상 항상 종료코드 0 을 유지한다(표 + 마지막 줄이 판정을 담는다 —
+        # 이 설계는 바꾸지 않는다). $LASTEXITCODE 만 보면 필수 패키지 FAIL 을 놓친다.
+        # 그래서 이 스텝만 출력을 캡처해 그대로 화면에 찍고, 실패 마커 문자열도 검사한다.
+        [string]$FailPattern = $null
+    )
     Write-Host "`n=== $Label ===" -ForegroundColor Cyan
-    & $Body
+    if ($FailPattern) {
+        $out = & $Body
+        $out | ForEach-Object { Write-Host $_ }
+        if (($out | Out-String) -match $FailPattern) {
+            $script:failed += $Label
+            Write-Host "FAIL: $Label" -ForegroundColor Red
+            return
+        }
+    } else {
+        & $Body
+    }
     if ($LASTEXITCODE -ne 0) {
         $script:failed += $Label
         Write-Host "FAIL: $Label" -ForegroundColor Red
     }
 }
 
-Invoke-Step '1. doctor'         { & $m3d doctor }
+Invoke-Step '1. doctor'          { & $m3d doctor } -FailPattern '필수 \d+종 FAIL'
 Invoke-Step '2. samples collect' { & $m3d samples collect }
 Invoke-Step '3. samples verify'  { & $m3d samples verify }
 Invoke-Step '4. db apply'        { & $m3d db apply }
