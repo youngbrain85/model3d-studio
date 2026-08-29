@@ -85,6 +85,26 @@ def test_small_block_not_a_frame():
     assert detect_frames(doc) == []
 
 
+def test_one_small_dimension_not_a_frame():
+    """한 변만 200mm 미만이어도 도곽이 아니다 — or 조건이 and 로 약해지면 잡는다."""
+    doc = ezdxf.new("R2018")
+    blk = doc.blocks.new("CZBLK-STRIP")
+    blk.add_lwpolyline([(0, 0), (1189, 0), (1189, 150), (0, 150)], close=True)
+    doc.modelspace().add_blockref("CZBLK-STRIP", (0, 0))
+    assert detect_frames(doc) == []
+
+
+def test_two_frames_page_order_top_to_bottom():
+    """위쪽 도곽이 1페이지 — 정렬 1차 키(y 내림)가 사라지면 잡는다."""
+    doc = _doc_with_frames(
+        ((0.0, 0.0), 200.0, 0.0),          # 아래
+        ((0.0, 300000.0), 200.0, 0.0),     # 위
+    )
+    frames = detect_frames(doc)
+    assert frames[0].y0 > frames[1].y0
+    assert [f.page_no for f in frames] == [1, 2]
+
+
 def test_to_paper_roundtrip_all_rotations():
     for rot in (0.0, 90.0, 180.0, 270.0):
         doc = _doc_with_frames(((1234.0, -777.0), 50.0, rot))
@@ -114,6 +134,7 @@ def test_fallback_frame_from_extents():
     assert (fr.x1, fr.y1) == pytest.approx((510.0, 320.0))
     # 폴백의 to_paper 는 world 오프셋 그대로
     assert fr.to_paper(110.0, 120.0) == pytest.approx((100.0, 100.0))
+    assert fr.paper_to_world(100.0, 100.0) == pytest.approx((110.0, 120.0))
 
 
 def test_fallback_empty_modelspace_is_none():
