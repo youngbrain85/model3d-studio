@@ -46,3 +46,16 @@ def test_changed_count():
     results = [_sv("A01", "C1", "match", changed=False),
                _sv("A02", "C2", "match", changed=True)]
     assert build_report(results)["changed"] == 1
+
+
+def test_failures_are_reported_without_polluting_counts():
+    """DXF 읽기 실패 시트는 failures 로 남고 total/counts 는 성공 처리분만 반영한다
+    (지식베이스 원칙 — 실패해도 나머지는 계속 처리하고 마지막에 보고, 전체 중단 금지)."""
+    results = [_sv("A01", "C1", "match")]
+
+    report = build_report(results)
+    assert report["failures"] == []  # 실패 없으면 빈 목록(기본값)
+
+    report2 = build_report(results, failures=[("A05", "DXFStructureError: 손상된 파일")])
+    assert report2["total"] == 1  # 실패 건은 total/counts 에 포함하지 않음
+    assert report2["failures"] == [{"ord": "A05", "error": "DXFStructureError: 손상된 파일"}]

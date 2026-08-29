@@ -23,7 +23,8 @@ class SheetVerdict:
     changed: bool
 
 
-def build_report(results: list["SheetVerdict"]) -> dict:
+def build_report(results: list["SheetVerdict"],
+                 failures: list[tuple[str, str]] | None = None) -> dict:
     counts: dict[str, int] = {}
     attention = []
     for r in results:
@@ -41,6 +42,8 @@ def build_report(results: list["SheetVerdict"]) -> dict:
         "counts": counts,
         "changed": sum(1 for r in results if r.changed),
         "attention": attention,
+        # DXF 읽기 실패 등 처리 불가 시트 — total/counts 에는 넣지 않고 별도 목록으로 남긴다
+        "failures": [{"ord": o, "error": e} for o, e in (failures or [])],
     }
 
 
@@ -50,6 +53,7 @@ def run_catalog(cfg: Config, dataset: str, *, force: bool = False) -> int:
     from ezdxf import recover
 
     results: list[SheetVerdict] = []
+    failures: list[tuple[str, str]] = []
     with psycopg.connect(cfg.require_db_url()) as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -76,8 +80,16 @@ def run_catalog(cfg: Config, dataset: str, *, force: bool = False) -> int:
                         doc, _aud = recover.readfile(dxf)
                     blocks = extract_titleblocks(doc)
                 except Exception as exc:
-                    typer.echo(f"{ord_}: DXF 읽기 실패 — {type(exc).__name__}: {exc}")
-                    return 1
+                    # 실패한 시트가 있어도 나머지는 계속 처리하고 실패 목록을
+                    # 마지막에 보고 — 전체 중단은 안 한다 (convert 와 동일 원칙).
+                    # 여기서 return 하면 with-블록을 정상 종료로 빠져나가 psycopg
+                    # 커넥션이 지금까지의 UPDATE 를 그대로 커밋해버린다(부분 커밋) —
+                    # continue 로 다음 시트를 계속 처리해 이 함수의 유일한
+                    # conn.commit() 지점에서 한 번에 커밋되게 한다.
+                    err = f"{type(exc).__name__}: {exc}"
+                    typer.echo(f"{ord_}: DXF 읽기 실패 — {err}")
+                    failures.append((ord_, err))
+                    continue
 
                 v = reconcile(blocks, drwno_file, title_file)
                 same = (cur_status == v.status and cur_drwno == v.drawing_no
@@ -94,7 +106,8 @@ def run_catalog(cfg: Config, dataset: str, *, force: bool = False) -> int:
                 results.append(SheetVerdict(ord_, drwno_file, v, changed=True))
         conn.commit()
 
-    report = build_report(results)
+    # DXF 읽기 실패가 있었더라도 여기까지는 항상 도달한다 — 리포트는 반드시 남는다.
+    report = build_report(results, failures=failures)
     out = cfg.derived_dir / dataset / "catalog_report.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -109,7 +122,14 @@ def run_catalog(cfg: Config, dataset: str, *, force: bool = False) -> int:
         typer.echo(f"  [{row['status']}] {row['ord']} {row['drawing_no_filename']}")
         for note in row["notes"]:
             typer.echo(f"      {note}")
+    if failures:
+        typer.echo(f"실패 {len(failures)}건:")
+        for ord_, err in failures:
+            typer.echo(f"  실패 {ord_}: {err}")
     typer.echo(f"리포트: {out}")
-    return 1 if counts.get("mismatch", 0) > 0 else 0
     # mismatch 는 파이프라인 실패가 아니라 '검출 성공' 이지만, 사람이 봐야 하므로
-    # 종료 코드 1 로 주의를 끈다 (지식베이스 §3: 불일치만 사람이 본다)
+    # 종료 코드 1 로 주의를 끈다 (지식베이스 §3: 불일치만 사람이 본다).
+    # DXF 읽기 실패(failures)는 진짜 처리 실패이므로 마찬가지로 종료 코드 1 —
+    # 출력에서는 attention(불일치/판독불가 판정) 과 "실패 N건:" 절이 서로 다른
+    # 절로 분리돼 있어 두 경우를 구분할 수 있다.
+    return 1 if (counts.get("mismatch", 0) > 0 or failures) else 0
