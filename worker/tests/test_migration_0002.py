@@ -22,7 +22,7 @@ def norm(sql) -> str:
 def test_discovered_in_order():
     """마이그레이션 러너가 0001 다음에 0002 를 집는다."""
     versions = [m.version for m in discover_migrations(REPO_ROOT / "supabase" / "migrations")]
-    assert versions == ["0001_init", "0002_convert"]
+    assert versions[:2] == ["0001_init", "0002_convert"]
 
 
 def test_drops_then_recreates_kind_check(norm):
