@@ -8,6 +8,10 @@
     output_config={"format": Class} 는 TypeError 로 죽는다.
   - messages.parse 는 쓰지 않는다 — 검증 실패 시 응답 객체 없이
     ValidationError 가 올라와 그 시도의 usage 를 기록할 수 없다.
+  - thinking 규약: Sonnet 계열은 thinking={"type": "disabled"} 를 명시한다(생략 시
+    adaptive thinking 이 기본 ON 이라 사고 토큰이 max_tokens 를 소진, 텍스트 블록 없이
+    끝난다 — 실측 2026-09-02). Fable/Mythos 계열은 thinking 이 항상 ON 이고 disabled 는
+    400 이므로 파라미터를 생략한다.
 """
 
 from __future__ import annotations
@@ -73,6 +77,21 @@ def _with_retry_note(messages: list[dict], reason: str) -> list[dict]:
     return [*messages[:-1], {**last, "content": [*last["content"], note]}]
 
 
+THINKING_ALWAYS_ON_PREFIXES = ("claude-fable", "claude-mythos")
+
+
+def _thinking_kwargs(model: str) -> dict:
+    """모델별 thinking 파라미터 (Global Constraints 'thinking 규약').
+
+    Sonnet 5 는 생략 시 adaptive thinking 이 기본 ON 이라 사고 토큰이 max_tokens 를 먹고
+    텍스트 블록 없이 max_tokens 로 끝난다(실측 2026-09-02). 구조화 JSON 출력에는 사고가
+    필요 없으므로 끈다. Fable/Mythos 는 항상 ON 이고 disabled 가 400 이므로 생략한다.
+    """
+    if model.startswith(THINKING_ALWAYS_ON_PREFIXES):
+        return {}
+    return {"thinking": {"type": "disabled"}}
+
+
 def call_structured(client, cfg: Config, dataset: str, *, model: str, system: str,
                     messages: list[dict], out_format, max_tokens: int, stage: str,
                     extra: dict | None = None, post_validate=None) -> tuple[object, dict]:
@@ -90,6 +109,7 @@ def call_structured(client, cfg: Config, dataset: str, *, model: str, system: st
             model=model, max_tokens=max_tokens, system=system,
             messages=attempt_messages,
             output_config={"format": {"type": "json_schema", "schema": schema}},
+            **_thinking_kwargs(model),
         )
         usage = log_usage(cfg, dataset, {
             **(extra or {}),

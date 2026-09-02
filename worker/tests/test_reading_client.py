@@ -142,3 +142,20 @@ def test_call_structured_logs_every_attempt(cfg):
     lines = _usage_lines(cfg)
     assert [x["attempt"] for x in lines] == [1, 2]
     assert all(x["cost_usd"] > 0 for x in lines)
+
+
+def test_call_structured_disables_thinking_for_sonnet(cfg):
+    """Sonnet 5 는 thinking 생략 시 adaptive 가 기본 ON — 사고 토큰이 max_tokens 를 먹어
+    텍스트 블록 없이 끝난다(실측 2026-09-02 B01). 구조화 출력엔 끈다."""
+    client = FakeClient([GOOD])
+    call_structured(client, cfg, "ds", model=MODEL_READ, system="sys",
+                    messages=MSGS, out_format=Out, max_tokens=64, stage="smoke")
+    assert client.messages.calls[0]["thinking"] == {"type": "disabled"}
+
+
+def test_call_structured_omits_thinking_for_fable(cfg):
+    """Fable 은 thinking 이 항상 ON 이고 disabled 는 400 — 파라미터를 보내지 않는다."""
+    client = FakeClient([GOOD])
+    call_structured(client, cfg, "ds", model=MODEL_REVIEW, system="sys",
+                    messages=MSGS, out_format=Out, max_tokens=64, stage="smoke")
+    assert "thinking" not in client.messages.calls[0]
