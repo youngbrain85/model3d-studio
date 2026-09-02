@@ -194,7 +194,11 @@ def crops(
 ) -> None:
     """[5 준비] ambiguity 크롭 생성 — 질문 카드의 이미지 (설계서 §6)."""
     cfg = load_config()
-    r = crops_run.run_crops(cfg, dataset, force=force)
+    try:
+        r = crops_run.run_crops(cfg, dataset, force=force)
+    except RuntimeError as exc:
+        typer.echo(f"실패: {exc}")
+        raise typer.Exit(code=1) from None
     typer.echo(f"크롭 {r['made']}건 생성 / {r['skipped']}건 스킵 / "
                f"고아 정리 {r['purged']}건 / 전체 {r['total']}건")
     # 아래 한 줄은 verify-m2a.ps1 이 정규식으로 읽는다 — 형식을 바꾸지 않는다(ASCII 고정)

@@ -80,10 +80,12 @@ def test_render_crop_keeps_large_as_is(tmp_path):
 # ── run_crops (가짜 커서) ────────────────────────────────────────────────
 
 class FakeDb:
-    def __init__(self, rows=()):
+    def __init__(self, rows=(), fail_on=None):
         self.rows = list(rows)
         self.sql = []
         self.committed = False
+        self.rolled_back = False
+        self.fail_on = fail_on  # SQL 접두어 — 매치되면 execute 가 RuntimeError 를 던진다
 
 
 class FakeCursor:
@@ -95,6 +97,8 @@ class FakeCursor:
         s = " ".join(sql.split())
         self.db.sql.append((s, params))
         self._rows = []
+        if self.db.fail_on and s.startswith(self.db.fail_on):
+            raise RuntimeError("db boom")
         if s.startswith("select id from projects"):
             self._rows = [("proj-1",)]
         elif s.startswith("select a.id, a.mm_bbox"):
@@ -122,6 +126,9 @@ class FakeConn:
 
     def commit(self):
         self.db.committed = True
+
+    def rollback(self):
+        self.db.rolled_back = True
 
     def __enter__(self):
         return self
@@ -194,3 +201,50 @@ def test_run_crops_reports_rotated_frame(cfg, monkeypatch):
     r = crops_mod.run_crops(cfg, "ds")
     assert r["made"] == 0 and len(r["failures"]) == 1
     assert "회전 도곽" in r["failures"][0][1]
+
+
+def test_run_crops_db_error_rolls_back_and_raises(cfg, monkeypatch):
+    """DB 반영(update/insert) 실패는 삼키지 않는다 — rollback 후 RuntimeError 로 올린다.
+
+    psycopg3 는 SQL 오류 후 트랜잭션이 aborted 상태가 되므로, 여기서 삼키고 다음
+    행을 계속 처리하면 원인과 무관한 행까지 failures 로 오염된다.
+    """
+    base = cfg.derived_dir / "ds"
+    (base / "png").mkdir(parents=True)
+    (base / "text").mkdir(parents=True)
+    Image.new("RGB", (800, 600), "white").save(base / "png" / "B01_C1_p1.png")
+    (base / "text" / "B01_C1_p1.json").write_text(
+        json.dumps({"paper_mm": PAPER, "rotation_deg": 0}), encoding="utf-8")
+    db = FakeDb(
+        rows=[("amb-1", BBOX, None, "B01", "s-b01", 1, "p-b01-1", 800, 600, None)],
+        fail_on="update ambiguities set crop_rel_path",
+    )
+    monkeypatch.setattr(crops_mod.psycopg, "connect", lambda *a, **k: FakeConn(db))
+
+    with pytest.raises(RuntimeError, match="크롭 DB 반영 실패"):
+        crops_mod.run_crops(cfg, "ds")
+    assert db.committed is False
+    assert db.rolled_back is True
+
+
+def test_run_crops_render_error_isolates_row_and_still_commits(cfg, monkeypatch):
+    """렌더 단계(용지 밖 bbox 등) 실패는 해당 행만 failures 로 남기고, 나머지 행은
+    정상 처리되어 commit 까지 이어진다."""
+    base = cfg.derived_dir / "ds"
+    (base / "png").mkdir(parents=True)
+    (base / "text").mkdir(parents=True)
+    Image.new("RGB", (800, 600), "white").save(base / "png" / "B01_C1_p1.png")
+    (base / "text" / "B01_C1_p1.json").write_text(
+        json.dumps({"paper_mm": PAPER, "rotation_deg": 0}), encoding="utf-8")
+    bad_bbox = [1300.0, 100.0, 1320.0, 120.0]   # 용지(1189mm) 밖
+    db = FakeDb(rows=[
+        ("amb-bad", bad_bbox, None, "B01", "s-b01", 1, "p-b01-1", 800, 600, None),
+        ("amb-good", BBOX, None, "B01", "s-b01", 1, "p-b01-1", 800, 600, None),
+    ])
+    monkeypatch.setattr(crops_mod.psycopg, "connect", lambda *a, **k: FakeConn(db))
+
+    r = crops_mod.run_crops(cfg, "ds")
+    assert r["made"] == 1 and len(r["failures"]) == 1
+    assert r["failures"][0][0] == "amb-bad"
+    assert (base / "crops" / "amb-good.png").is_file()
+    assert db.committed is True

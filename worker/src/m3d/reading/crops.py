@@ -72,7 +72,16 @@ def render_crop(png: Path, box_px, out: Path, min_px: int = MIN_CROP_PX) -> tupl
 
 
 def run_crops(cfg: Config, dataset: str, *, force: bool = False) -> dict:
-    """ambiguity 전건에 크롭을 만들고 crop_rel_path·assets 를 채운다(+고아 정리)."""
+    """ambiguity 전건에 크롭을 만들고 crop_rel_path·assets 를 채운다(+고아 정리).
+
+    per-row try 는 "렌더 단계"(PNG 탐색·회전 확인·mm→px 변환·크롭 저장)만 감싼다 —
+    이 구간의 실패는 데이터 문제(용지 밖 bbox·회전 도곽·렌더 PNG 없음)라 해당 행만
+    failures 에 쌓고 다음 행으로 넘어간다. DB 반영(update ambiguities·insert assets)
+    은 try 밖: psycopg3 는 SQL 오류 후 트랜잭션이 aborted 상태가 되어 이후 모든 행이
+    원인과 무관하게 오염되므로, 실패 시 즉시 rollback 하고 RuntimeError 로 올려
+    호출자가 멈추게 한다(부분 커밋 없음 — PNG 파일이 남아도 다음 실행에서
+    crop_rel_path 가 NULL 이라 재생성·멱등이라 안전).
+    """
     made = skipped = purged = 0
     failures: list[tuple[str, str]] = []
     crops_dir = cfg.derived_dir / dataset / "crops"
@@ -120,6 +129,7 @@ def run_crops(cfg: Config, dataset: str, *, force: bool = False) -> dict:
             if page_no is None or wpx is None or hpx is None:
                 failures.append((str(amb_id), "sheet_page 미해석/크기 미기록"))
                 continue
+
             try:
                 pngs = sorted((cfg.derived_dir / dataset / "png")
                               .glob(f"{ord_}_*_p{page_no}.png"))
@@ -137,6 +147,11 @@ def run_crops(cfg: Config, dataset: str, *, force: bool = False) -> dict:
                 rel = f"{prefix}{amb_id}.png"
                 out = cfg.repo_root / rel
                 render_crop(src, mm_bbox_to_px(bbox, meta["paper_mm"], (wpx, hpx)), out)
+            except Exception as exc:
+                failures.append((str(amb_id), f"{type(exc).__name__}: {exc}"))
+                continue
+
+            try:
                 with conn.cursor() as cur:
                     cur.execute("update ambiguities set crop_rel_path = %s where id = %s",
                                 (rel, amb_id))
@@ -149,9 +164,10 @@ def run_crops(cfg: Config, dataset: str, *, force: bool = False) -> dict:
                         "sheet_id=excluded.sheet_id, sheet_page_id=excluded.sheet_page_id",
                         (project_id, sheet_id, page_id, rel,
                          out.stat().st_size, sha256_file(out)))
-                made += 1
             except Exception as exc:
-                failures.append((str(amb_id), f"{type(exc).__name__}: {exc}"))
+                conn.rollback()
+                raise RuntimeError(f"크롭 DB 반영 실패 ({amb_id}): {exc}") from exc
+            made += 1
         conn.commit()
 
     return {"made": made, "skipped": skipped, "purged": purged,
