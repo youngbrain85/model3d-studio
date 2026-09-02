@@ -32,6 +32,8 @@ class Config:
     supabase_publishable_key: str | None
     supabase_service_key: str | None
     supabase_db_url: str | None
+    anthropic_api_key: str | None
+    anthropic_workspace_id: str | None
 
     # ── 리포 내부 경로 ──────────────────────────────────────────────
     @property
@@ -84,6 +86,19 @@ class Config:
             raise ConfigError("REFERENCE_MODELS_DIR 미설정 — .env 를 확인하세요.")
         return self.reference_models_dir
 
+    def require_anthropic_api_key(self) -> str:
+        if not self.anthropic_api_key:
+            raise ConfigError("ANTHROPIC_API_KEY 미설정 — .env 를 확인하세요.")
+        return self.anthropic_api_key
+
+    def require_anthropic_workspace_id(self) -> str:
+        if not self.anthropic_workspace_id:
+            raise ConfigError(
+                "ANTHROPIC_WORKSPACE_ID 미설정 — identity-linked 키는 워크스페이스 "
+                "헤더가 필수입니다 (설계서 §2-1)."
+            )
+        return self.anthropic_workspace_id
+
 
 def _env(key: str) -> str | None:
     """빈 문자열·공백만 있는 값은 미설정으로 본다."""
@@ -116,4 +131,6 @@ def load_config(env_file: Path | None = None) -> Config:
         supabase_publishable_key=_env("SUPABASE_PUBLISHABLE_KEY"),
         supabase_service_key=_env("SUPABASE_SERVICE_KEY"),
         supabase_db_url=_env("SUPABASE_DB_URL"),
+        anthropic_api_key=_env("ANTHROPIC_API_KEY"),
+        anthropic_workspace_id=_env("ANTHROPIC_WORKSPACE_ID"),
     )

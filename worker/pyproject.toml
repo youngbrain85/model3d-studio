@@ -17,6 +17,7 @@ dependencies = [
     "trimesh>=4.4",
     "numpy>=1.26",
     "matplotlib>=3.9",
+    "anthropic>=1.2,<2",
 ]
 
 # 선택 의존성 — 설치 실패해도 M0 는 통과한다 (설계서 §6-1)
