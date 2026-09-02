@@ -13,6 +13,7 @@ from m3d import doctor as doctor_mod
 from m3d.catalog import run as catalog_run
 from m3d.config import load_config
 from m3d.convert import run as convert_run
+from m3d.reading import crops as crops_run
 from m3d.reading import region as reading_region
 from m3d.reading import sheet as reading_sheet
 from m3d.reading import store as reading_store
@@ -184,6 +185,24 @@ def catalog(
     """[3] 표제란 추출 → 파일명과 기계 대조 → catalog_status (설계서 §6)."""
     cfg = load_config()
     raise typer.Exit(code=catalog_run.run_catalog(cfg, dataset, force=force))
+
+
+@app.command()
+def crops(
+    dataset: str = typer.Argument(..., help="데이터셋 슬러그"),
+    force: bool = typer.Option(False, "--force", help="이미 있어도 재생성"),
+) -> None:
+    """[5 준비] ambiguity 크롭 생성 — 질문 카드의 이미지 (설계서 §6)."""
+    cfg = load_config()
+    r = crops_run.run_crops(cfg, dataset, force=force)
+    typer.echo(f"크롭 {r['made']}건 생성 / {r['skipped']}건 스킵 / "
+               f"고아 정리 {r['purged']}건 / 전체 {r['total']}건")
+    # 아래 한 줄은 verify-m2a.ps1 이 정규식으로 읽는다 — 형식을 바꾸지 않는다(ASCII 고정)
+    typer.echo(f"made={r['made']} skipped={r['skipped']} purged={r['purged']} "
+               f"failures={len(r['failures'])} total={r['total']}")
+    for aid, err in r["failures"]:
+        typer.echo(f"  실패 {aid}: {err}")
+    raise typer.Exit(code=1 if r["failures"] else 0)
 
 
 def _read_pages(cfg, dataset, pages, *, force, cache_only):
