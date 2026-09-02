@@ -11,6 +11,8 @@ from m3d import doctor as doctor_mod
 from m3d.catalog import run as catalog_run
 from m3d.config import load_config
 from m3d.convert import run as convert_run
+from m3d.reading import sheet as reading_sheet
+from m3d.reading.client import estimate_cost
 from m3d.samples.collect import DATASET, collect, manifest_path
 from m3d.samples.manifest import load_manifest, verify_manifest, write_manifest
 from m3d.seed import ab1_p4p5 as seed_mod
@@ -178,6 +180,49 @@ def catalog(
     """[3] 표제란 추출 → 파일명과 기계 대조 → catalog_status (설계서 §6)."""
     cfg = load_config()
     raise typer.Exit(code=catalog_run.run_catalog(cfg, dataset, force=force))
+
+
+@app.command()
+def read(
+    dataset: str = typer.Argument(..., help="데이터셋 슬러그"),
+    region: str = typer.Option(None, "--region", help="계열 필터 (A~F)"),
+    sheet: str = typer.Option(None, "--sheet", help="시트 ord 필터 (예: B01)"),
+    force: bool = typer.Option(False, "--force", help="캐시 무시하고 재호출"),
+    cache_only: bool = typer.Option(False, "--cache-only",
+                                    help="캐시만 사용 — 미스는 실패(무과금 보증)"),
+) -> None:
+    """[4] 시트 판독 — readings·ambiguities 초안 (설계서 §4-1)."""
+    if force and cache_only:
+        typer.echo("--force 와 --cache-only 는 함께 쓸 수 없습니다.")
+        raise typer.Exit(code=2)
+
+    cfg = load_config()
+    pages = reading_sheet.list_pages(cfg, dataset, region=region, ord_=sheet)
+    if not pages:
+        typer.echo("대상 페이지가 없습니다 — convert 를 먼저 돌렸는지 확인하세요.")
+        raise typer.Exit(code=1)
+
+    typer.echo(f"판독 {len(pages)}페이지 (계열 {region or '전체'})")
+    total_cost, failures = 0.0, []
+    for i, page in enumerate(pages, start=1):
+        try:
+            out, usage = reading_sheet.read_sheet(cfg, dataset, page,
+                                                  force=force, cache_only=cache_only)
+        except Exception as exc:
+            failures.append((f"{page.ord}p{page.page_no}", f"{type(exc).__name__}: {exc}"))
+            typer.echo(f"[{i}/{len(pages)}] {page.ord}p{page.page_no} 실패: {type(exc).__name__}")
+            continue
+        cost = 0.0 if usage["cached"] else estimate_cost(
+            usage["model"], usage["in"], usage["out"])
+        total_cost += cost
+        mark = "캐시" if usage["cached"] else f"${cost:.4f}"
+        typer.echo(f"[{i}/{len(pages)}] {page.ord}p{page.page_no} "
+                   f"readings {len(out.readings)} / ambiguities {len(out.ambiguities)} ({mark})")
+
+    typer.echo(f"\n합계 비용 ${total_cost:.4f} / 실패 {len(failures)}건")
+    for ref, err in failures:
+        typer.echo(f"  실패 {ref}: {err}")
+    raise typer.Exit(code=1 if failures else 0)
 
 
 if __name__ == "__main__":
