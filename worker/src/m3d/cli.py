@@ -260,9 +260,16 @@ def read(
         if reg in failed_regions:
             typer.echo(f"[{reg}] 시트 실패가 있어 통합·DB 반영을 건너뜁니다(전건 성공일 때만 반영).")
             continue
-        if not force and reading_store.has_review_rows(cfg, dataset, reg):
-            typer.echo(f"[{reg}] 검토 결과 보존 — 갱신하려면 `m3d review` 재실행 또는 --force")
-            continue
+        if not force:
+            try:
+                skip = reading_store.has_review_rows(cfg, dataset, reg)
+            except Exception as exc:
+                failures.append((f"{reg}:db", f"{type(exc).__name__}: {exc}"))
+                typer.echo(f"[{reg}] 검토 확인 실패: {type(exc).__name__}")
+                continue
+            if skip:
+                typer.echo(f"[{reg}] 검토 결과 보존 — 갱신하려면 `m3d review` 재실행 또는 --force")
+                continue
         try:
             merged, usage = reading_region.merge_region(
                 cfg, dataset, reg, sheet_outs, force=force, cache_only=cache_only)
@@ -274,7 +281,12 @@ def read(
             usage["model"], usage["in"], usage["out"])
         rows_r, rows_a = reading_store.build_rows(reg, merged.readings,
                                                   merged.ambiguities, 2)
-        res = reading_store.replace_region(cfg, dataset, reg, rows_r, rows_a)
+        try:
+            res = reading_store.replace_region(cfg, dataset, reg, rows_r, rows_a)
+        except Exception as exc:
+            failures.append((f"{reg}:db", f"{type(exc).__name__}: {exc}"))
+            typer.echo(f"[{reg}] DB 반영 실패: {type(exc).__name__}")
+            continue
         typer.echo(f"[{reg}] DB 반영 readings {res['readings']} / "
                    f"ambiguities {res['ambiguities']} / id 보존 {res['kept']} / "
                    f"미해석 {res['failed']}")
@@ -326,8 +338,13 @@ def review(
         finals, ambs, log = reading_region.apply_findings(
             merged.readings, merged.ambiguities, reviewed.findings)
         rows_r, rows_a = reading_store.build_rows(reg, finals, ambs, 3)
-        res = reading_store.replace_region(cfg, dataset, reg, rows_r, rows_a)
-        path = _save_review(cfg, dataset, reg, log)
+        try:
+            res = reading_store.replace_region(cfg, dataset, reg, rows_r, rows_a)
+            path = _save_review(cfg, dataset, reg, log)
+        except Exception as exc:
+            failures.append((f"{reg}:db", f"{type(exc).__name__}: {exc}"))
+            typer.echo(f"[{reg}] DB 반영 실패: {type(exc).__name__}")
+            continue
         applied = sum(1 for e in log if e["applied"])
         typer.echo(f"[{reg}] 지적 {len(log)}건(반영 {applied}) → readings {res['readings']} / "
                    f"ambiguities {res['ambiguities']} / id 보존 {res['kept']} / "

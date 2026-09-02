@@ -57,6 +57,8 @@ class FakeCursor:
             self._rows = [(o, n, i) for (o, n), i in self.db.pages.items()]
         elif s.startswith("select id, basis_sheet_id"):
             self._rows = list(self.db.ambiguities)
+        elif s.startswith("delete from ambiguities"):
+            self.db.ambiguities = []
         elif s.startswith("insert into readings"):
             self.db.inserted_r.append(params)
         elif s.startswith("insert into ambiguities"):
@@ -159,3 +161,35 @@ def test_same_natural_key_keeps_id_and_crop_path(cfg, monkeypatch):
     params = db.inserted_a[0]
     assert params[0] == "old-id"                                  # id 보존
     assert params[8] == "data/derived/ds/crops/old-id.png"        # crop_rel_path 보존
+    # keep-맵 SELECT 가 DELETE 보다 앞서야 한다 — 순서가 뒤바뀌면 FakeCursor 가 DELETE 때
+    # ambiguities 를 비우므로 keep-맵이 빈 채로 뜨고, 이 단언이 먼저 잡아낸다.
+    select_idx = next(i for i, (s, _) in enumerate(db.sql)
+                      if s.startswith("select id, basis_sheet_id"))
+    delete_idx = next(i for i, (s, _) in enumerate(db.sql)
+                      if s.startswith("delete from ambiguities"))
+    assert select_idx < delete_idx
+
+
+def test_replace_region_inserts_readings_with_region_and_round(cfg, monkeypatch):
+    """[Important 3-a] readings 삽입이 실제로 실행되고 region·round 가 실린다."""
+    db = FakeDb()
+    _patch(monkeypatch, db)
+    rows_r, _rows_a = build_rows("B", [_r("두께", ord_="B01")], [], round_no=2)
+    res = store.replace_region(cfg, "ds", "B", rows_r, [])
+    assert res == {"readings": 1, "ambiguities": 0, "kept": 0, "failed": 0}
+    assert len(db.inserted_r) == 1
+    params = db.inserted_r[0]
+    # insert into readings (project_id, region, item, value_raw, unit,
+    #                        basis_sheet_id, basis_page_id, basis_mm_bbox, crosscheck, status, round)
+    assert params[1] == "B" and params[10] == 2
+
+
+def test_replace_region_counts_unresolved_ord_as_failed(cfg, monkeypatch):
+    """[Important 3-a] 시트·페이지 id 를 못 찾는 행은 버려지고 failed 로 센다."""
+    db = FakeDb()
+    _patch(monkeypatch, db)
+    rows_r, rows_a = build_rows(
+        "B", [_r("두께", ord_="Z99")], [_a("해석", ord_="Z99")], round_no=2)
+    res = store.replace_region(cfg, "ds", "B", rows_r, rows_a)
+    assert res == {"readings": 0, "ambiguities": 0, "kept": 0, "failed": 2}
+    assert db.inserted_r == [] and db.inserted_a == []
