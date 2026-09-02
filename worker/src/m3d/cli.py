@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import sys
+from datetime import datetime, timezone
 
 import typer
 
@@ -11,7 +13,9 @@ from m3d import doctor as doctor_mod
 from m3d.catalog import run as catalog_run
 from m3d.config import load_config
 from m3d.convert import run as convert_run
+from m3d.reading import region as reading_region
 from m3d.reading import sheet as reading_sheet
+from m3d.reading import store as reading_store
 from m3d.reading.client import estimate_cost
 from m3d.samples.collect import DATASET, collect, manifest_path
 from m3d.samples.manifest import load_manifest, verify_manifest, write_manifest
@@ -182,27 +186,9 @@ def catalog(
     raise typer.Exit(code=catalog_run.run_catalog(cfg, dataset, force=force))
 
 
-@app.command()
-def read(
-    dataset: str = typer.Argument(..., help="데이터셋 슬러그"),
-    region: str = typer.Option(None, "--region", help="계열 필터 (A~F)"),
-    sheet: str = typer.Option(None, "--sheet", help="시트 ord 필터 (예: B01)"),
-    force: bool = typer.Option(False, "--force", help="캐시 무시하고 재호출"),
-    cache_only: bool = typer.Option(False, "--cache-only",
-                                    help="캐시만 사용 — 미스는 실패(무과금 보증)"),
-) -> None:
-    """[4] 시트 판독 — readings·ambiguities 초안 (설계서 §4-1)."""
-    if force and cache_only:
-        typer.echo("--force 와 --cache-only 는 함께 쓸 수 없습니다.")
-        raise typer.Exit(code=2)
-
-    cfg = load_config()
-    pages = reading_sheet.list_pages(cfg, dataset, region=region, ord_=sheet)
-    if not pages:
-        typer.echo("대상 페이지가 없습니다 — convert 를 먼저 돌렸는지 확인하세요.")
-        raise typer.Exit(code=1)
-
-    typer.echo(f"판독 {len(pages)}페이지 (계열 {region or '전체'})")
+def _read_pages(cfg, dataset, pages, *, force, cache_only):
+    """페이지별 시트 판독. (계열별 [(ord, out)], 총비용, 실패목록) 을 돌려준다."""
+    outs: dict[str, list] = {}
     total_cost, failures = 0.0, []
     for i, page in enumerate(pages, start=1):
         try:
@@ -216,13 +202,138 @@ def read(
             usage["model"], usage["in"], usage["out"])
         total_cost += cost
         mark = "캐시" if usage["cached"] else f"${cost:.4f}"
+        outs.setdefault(page.region, []).append((page.ord, out))
         typer.echo(f"[{i}/{len(pages)}] {page.ord}p{page.page_no} "
                    f"readings {len(out.readings)} / ambiguities {len(out.ambiguities)} ({mark})")
+    return outs, total_cost, failures
 
+
+def _save_review(cfg, dataset, region, log):
+    """검토 기록 저장. 기존 파일은 UTC 타임스탬프를 붙여 보존한다(비교용)."""
+    path = cfg.derived_dir / dataset / f"review-{region}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.is_file():
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        path.replace(path.with_name(f"review-{region}.{stamp}.json"))
+    path.write_text(json.dumps(log, ensure_ascii=False, indent=1) + "\n",
+                    encoding="utf-8", newline="\n")
+    return path
+
+
+def _finish(total_cost, failures):
     typer.echo(f"\n합계 비용 ${total_cost:.4f} / 실패 {len(failures)}건")
     for ref, err in failures:
         typer.echo(f"  실패 {ref}: {err}")
     raise typer.Exit(code=1 if failures else 0)
+
+
+@app.command()
+def read(
+    dataset: str = typer.Argument(..., help="데이터셋 슬러그"),
+    region: str = typer.Option(None, "--region", help="계열 필터 (A~F)"),
+    sheet: str = typer.Option(None, "--sheet", help="시트 ord 필터 — DB 반영 없음"),
+    force: bool = typer.Option(False, "--force", help="캐시 무시·검토 결과 덮어쓰기"),
+    cache_only: bool = typer.Option(False, "--cache-only",
+                                    help="캐시만 사용 — 미스는 실패(무과금 보증)"),
+) -> None:
+    """[4] 시트 판독 + 계열 통합 → readings·ambiguities (round 2) 반영."""
+    if force and cache_only:
+        typer.echo("--force 와 --cache-only 는 함께 쓸 수 없습니다.")
+        raise typer.Exit(code=2)
+
+    cfg = load_config()
+    pages = reading_sheet.list_pages(cfg, dataset, region=region, ord_=sheet)
+    if not pages:
+        typer.echo("대상 페이지가 없습니다 — convert 를 먼저 돌렸는지 확인하세요.")
+        raise typer.Exit(code=1)
+
+    typer.echo(f"판독 {len(pages)}페이지 (계열 {region or '전체'})")
+    outs, total_cost, failures = _read_pages(cfg, dataset, pages,
+                                             force=force, cache_only=cache_only)
+
+    if sheet:
+        typer.echo("--sheet 지정 시 DB 반영 없음 — 계열 반영은 --region 으로 실행하세요.")
+        _finish(total_cost, failures)
+
+    failed_regions = {ref[0] for ref, _ in failures}
+    for reg, sheet_outs in sorted(outs.items()):
+        if reg in failed_regions:
+            typer.echo(f"[{reg}] 시트 실패가 있어 통합·DB 반영을 건너뜁니다(전건 성공일 때만 반영).")
+            continue
+        if not force and reading_store.has_review_rows(cfg, dataset, reg):
+            typer.echo(f"[{reg}] 검토 결과 보존 — 갱신하려면 `m3d review` 재실행 또는 --force")
+            continue
+        try:
+            merged, usage = reading_region.merge_region(
+                cfg, dataset, reg, sheet_outs, force=force, cache_only=cache_only)
+        except Exception as exc:
+            failures.append((reg, f"{type(exc).__name__}: {exc}"))
+            typer.echo(f"[{reg}] 통합 실패: {type(exc).__name__}")
+            continue
+        total_cost += 0.0 if usage["cached"] else estimate_cost(
+            usage["model"], usage["in"], usage["out"])
+        rows_r, rows_a = reading_store.build_rows(reg, merged.readings,
+                                                  merged.ambiguities, 2)
+        res = reading_store.replace_region(cfg, dataset, reg, rows_r, rows_a)
+        typer.echo(f"[{reg}] DB 반영 readings {res['readings']} / "
+                   f"ambiguities {res['ambiguities']} / id 보존 {res['kept']} / "
+                   f"미해석 {res['failed']}")
+
+    _finish(total_cost, failures)
+
+
+@app.command()
+def review(
+    dataset: str = typer.Argument(..., help="데이터셋 슬러그"),
+    region: str = typer.Option(None, "--region", help="계열 필터 (A~F)"),
+    force: bool = typer.Option(
+        False, "--force",
+        help="검토 호출만 캐시 무시(시트 판독·통합은 캐시 사용; "
+             "전부 재실행은 read --force 후 review)"),
+    cache_only: bool = typer.Option(False, "--cache-only",
+                                    help="캐시만 사용 — 미스는 실패(무과금 보증)"),
+) -> None:
+    """[4] 적대적 검토 → 검토 반영 결과를 readings (round 3) 로 반영 (설계서 §4-3)."""
+    if force and cache_only:
+        typer.echo("--force 와 --cache-only 는 함께 쓸 수 없습니다.")
+        raise typer.Exit(code=2)
+
+    cfg = load_config()
+    pages = reading_sheet.list_pages(cfg, dataset, region=region)
+    if not pages:
+        typer.echo("대상 페이지가 없습니다 — convert·read 를 먼저 돌렸는지 확인하세요.")
+        raise typer.Exit(code=1)
+
+    outs, total_cost, failures = _read_pages(cfg, dataset, pages,
+                                             force=False, cache_only=cache_only)
+    failed_regions = {ref[0] for ref, _ in failures}
+    for reg, sheet_outs in sorted(outs.items()):
+        if reg in failed_regions:
+            typer.echo(f"[{reg}] 시트 실패가 있어 검토를 건너뜁니다.")
+            continue
+        try:
+            merged, u1 = reading_region.merge_region(
+                cfg, dataset, reg, sheet_outs, force=False, cache_only=cache_only)
+            reviewed, u2 = reading_region.review_region(
+                cfg, dataset, reg, merged, force=force, cache_only=cache_only)
+        except Exception as exc:
+            failures.append((reg, f"{type(exc).__name__}: {exc}"))
+            typer.echo(f"[{reg}] 검토 실패: {type(exc).__name__}")
+            continue
+        for u in (u1, u2):
+            total_cost += 0.0 if u["cached"] else estimate_cost(u["model"], u["in"], u["out"])
+
+        finals, ambs, log = reading_region.apply_findings(
+            merged.readings, merged.ambiguities, reviewed.findings)
+        rows_r, rows_a = reading_store.build_rows(reg, finals, ambs, 3)
+        res = reading_store.replace_region(cfg, dataset, reg, rows_r, rows_a)
+        path = _save_review(cfg, dataset, reg, log)
+        applied = sum(1 for e in log if e["applied"])
+        typer.echo(f"[{reg}] 지적 {len(log)}건(반영 {applied}) → readings {res['readings']} / "
+                   f"ambiguities {res['ambiguities']} / id 보존 {res['kept']} / "
+                   f"미해석 {res['failed']}  기록: {path.name}")
+
+    _finish(total_cost, failures)
 
 
 if __name__ == "__main__":
