@@ -17,6 +17,7 @@ from m3d.reading import crops as crops_run
 from m3d.reading import publish as publish_run
 from m3d.reading import region as reading_region
 from m3d.reading import sheet as reading_sheet
+from m3d.reading import ssot as ssot_run
 from m3d.reading import store as reading_store
 from m3d.reading.client import estimate_cost
 from m3d.samples.collect import DATASET, collect, manifest_path
@@ -450,6 +451,22 @@ def review(
         _echo_failed_rows(reg, res)
 
     _finish(total_cost, failures)
+
+
+@app.command()
+def ssot(dataset: str = typer.Argument(..., help="데이터셋 슬러그")) -> None:
+    """[5] 치수 정본(실측정리) 문서 생성 — 판독값 + 결정 + 미결 (M2b 설계 §4-2)."""
+    cfg = load_config()
+    try:
+        r = ssot_run.run_ssot(cfg, dataset)
+    except RuntimeError as exc:
+        typer.echo(f"실패: {exc}")
+        raise typer.Exit(code=1) from None
+    c = r["counts"]
+    typer.echo(f"실측정리 v{r['version']} {'생성' if r['changed'] else '변경 없음'}: {r['path']}")
+    typer.echo(f"ssot_version={r['version']} changed={str(r['changed']).lower()} "
+               f"readings={sum(c['readings'].values())} decided={c['decided']} "
+               f"provisional={c['provisional']} open={c['open']}")
 
 
 if __name__ == "__main__":
