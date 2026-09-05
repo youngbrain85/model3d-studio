@@ -140,11 +140,12 @@ def test_multiple_findings_all_recorded():
     assert len(log) == 2
 
 
-def test_status_change_composite_label_partial_match():
-    """acceptance §3 — F 계열이 여러 항목을 합성 라벨로 지적하면 부분일치로 전부 적용한다."""
+def test_status_change_composite_label_token_match_slash_suffix():
+    """acceptance §3 — 어순 때문에 부분 문자열로는 마지막 항목만 잡히던 슬래시 합성
+    라벨("P1/P3/P4 희생관 연장")도 토큰 부분집합 일치로 전부 잡는다."""
     readings = [_r("P1 희생관 연장", ord_="F01"), _r("P3 희생관 연장", ord_="F01"),
                 _r("P4 희생관 연장", ord_="F01"), _r("무관 항목", ord_="F01")]
-    target = "P1 희생관 연장/P3 희생관 연장/P4 희생관 연장(17.990/33.610/29.930) 및 제원"
+    target = "P1/P3/P4 희생관 연장(17.990/33.610/29.930) 및 제원"
 
     finals, _amb, log = apply_findings(
         readings, [],
@@ -155,11 +156,46 @@ def test_status_change_composite_label_partial_match():
     assert lowered == {"P1 희생관 연장", "P3 희생관 연장", "P4 희생관 연장"}
     assert [r.status for r in finals if r.item == "무관 항목"] == ["확정"]
     assert log[0]["applied"] is True
-    assert "부분일치 3건" in log[0]["note"]
+    assert "토큰일치 3건" in log[0]["note"]
 
 
-def test_status_change_no_exact_or_partial_match_stays_untouched():
-    """완전 일치도 부분 일치도 없으면 기존대로 대상없음으로 남는다."""
+def test_status_change_composite_label_token_match_parenthetical_list():
+    """공통 접두 + 괄호 안 pier 목록 형태("받침 종류(P1/P4/P7/P8) …")도 토큰
+    부분집합 일치로 대응 항목 전부를 잡는다 — F 계열 실측 두 번째 대상없음 사례."""
+    readings = [_r("P1 받침 종류", ord_="F01"), _r("P4 받침 종류", ord_="F01"),
+                _r("P7 받침 종류", ord_="F01"), _r("P8 받침 종류", ord_="F01"),
+                _r("무관 항목", ord_="F01")]
+    target = "받침 종류(P1/P4/P7/P8) 및 A/B(825/825, 845/845)"
+
+    finals, _amb, log = apply_findings(
+        readings, [],
+        [ReviewFinding(target_item=target, verdict="상태변경", reason="과신",
+                       new_status="추정")])
+
+    lowered = {r.item for r in finals if r.status == "추정"}
+    assert lowered == {"P1 받침 종류", "P4 받침 종류", "P7 받침 종류", "P8 받침 종류"}
+    assert [r.status for r in finals if r.item == "무관 항목"] == ["확정"]
+    assert log[0]["applied"] is True
+    assert "토큰일치 4건" in log[0]["note"]
+
+
+def test_status_change_single_token_item_excluded_from_fallback():
+    """1토큰 item("두께")은 그 토큰이 target 에 있어도 오매칭 위험 때문에
+    폴백에서 제외한다 — 완전 일치가 없으면 대상없음으로 남는다."""
+    readings = [_r("두께", ord_="F01")]
+    target = "두께/색상 등 제원"
+
+    finals, _amb, log = apply_findings(
+        readings, [],
+        [ReviewFinding(target_item=target, verdict="상태변경", reason="과신",
+                       new_status="추정")])
+
+    assert finals[0].status == "확정"
+    assert log[0]["applied"] is False and "대상 없음" in log[0]["note"]
+
+
+def test_status_change_no_exact_or_token_match_stays_untouched():
+    """완전 일치도 토큰 일치도 없으면 기존대로 대상없음으로 남는다."""
     readings = [_r("완전 무관")]
 
     finals, _amb, log = apply_findings(

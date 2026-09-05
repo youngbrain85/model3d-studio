@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 
 from m3d.config import Config
 from m3d.reading import prompts
@@ -35,6 +36,21 @@ from m3d.reading.schema import (
 MAX_TOKENS = 16000
 
 log = logging.getLogger(__name__)
+
+# 합성 라벨("P1/P3/P4 희생관 연장(…) 및 제원", "받침 종류(P1/P4/P7/P8) …")을 항목
+# 단위 토큰으로 쪼갤 때 쓰는 구분자. 마침표는 포함하지 않는다 — "17.990" 같은 소수·
+# "NO.1" 같은 표기가 깨지면 안 되기 때문이다.
+_LABEL_TOKEN_DELIMS = ["/", "·", ",", "(", ")", "[", "]", "및", "와", "과"]
+_LABEL_TOKEN_RE = re.compile(
+    "|".join(re.escape(d) for d in _LABEL_TOKEN_DELIMS) + r"|\s+")
+
+
+def _tokens(s: str) -> set[str]:
+    """합성 라벨 비교용 토큰 집합.
+
+    `_LABEL_TOKEN_DELIMS` 구분자와 공백으로 문자열을 쪼개고 빈 토큰을 버린다.
+    """
+    return {t for t in _LABEL_TOKEN_RE.split(s) if t}
 
 # (ord, page_no) → 용지 크기(w_mm, h_mm) — merge_region/review_region 의 post_validate 가
 # "입력에 실제로 존재하는 페이지인가·그 용지 안의 bbox인가"를 확인하는 데 쓴다.
@@ -170,10 +186,13 @@ def apply_findings(readings: list[MergedReading], ambiguities: list[MergedAmbigu
     지적이 없는 항목도 FinalReading 으로 승격해 반환 타입을 한 종류로 유지한다.
 
     '상태변경' 은 완전 일치를 우선 시도한다. 완전 일치가 0건이면 검토(Fable)가 여러
-    reading 을 하나의 합성 라벨("P1/P3/P4 희생관 연장(…) 및 제원")로 묶어 지적한 경우를
-    대비해 부분 일치(item 이 target_item 의 부분 문자열)로 한 번 더 시도한다 — acceptance
-    §3(F계열 2건이 완전 일치 실패로 "대상 없음" 미종결된 사례)의 재발 방지. 그래도 0건이면
-    기존대로 대상 없음으로 남긴다.
+    reading 을 하나의 합성 라벨("P1/P3/P4 희생관 연장(…) 및 제원", "받침 종류
+    (P1/P4/P7/P8) …")로 묶어 지적한 경우를 대비해 토큰 부분집합 일치로 한 번 더
+    시도한다 — item 의 토큰(`_tokens`, 2개 이상)이 전부 target_item 의 토큰에
+    포함되면 매칭. 부분 문자열 규칙("P4 희생관 연장"만 잡히고 "P1 희생관 연장"·
+    "P3 희생관 연장"은 어순 때문에 놓치는 문제)의 재발 방지(acceptance §3 F계열
+    사례). 1토큰 item(예: "두께")은 오매칭 위험이 커 폴백에서 제외한다. 그래도
+    0건이면 기존대로 대상 없음으로 남긴다.
     """
     finals = [FinalReading.model_validate(r.model_dump()) for r in readings]
     ambs = list(ambiguities)
@@ -187,12 +206,17 @@ def apply_findings(readings: list[MergedReading], ambiguities: list[MergedAmbigu
             continue
         if f.verdict == "상태변경":
             hits = [i for i, r in enumerate(finals) if r.item == f.target_item]
-            partial_note = ""
+            fallback_note = ""
             if not hits:
-                hits = [i for i, r in enumerate(finals)
-                        if r.item and r.item in f.target_item]
-                if hits:
-                    partial_note = f"합성 라벨 부분일치 {len(hits)}건"
+                target_tokens = _tokens(f.target_item)
+                fallback_hits = []
+                for i, r in enumerate(finals):
+                    item_tokens = _tokens(r.item) if r.item else set()
+                    if len(item_tokens) >= 2 and item_tokens <= target_tokens:
+                        fallback_hits.append(i)
+                if fallback_hits:
+                    hits = fallback_hits
+                    fallback_note = f"합성 라벨 토큰일치 {len(hits)}건"
             if not hits:
                 entry["note"] = "대상 없음 — 항목명이 통합 결과와 다르다"
             else:
@@ -200,8 +224,8 @@ def apply_findings(readings: list[MergedReading], ambiguities: list[MergedAmbigu
                     finals[i] = FinalReading.model_validate(
                         {**finals[i].model_dump(), "status": f.new_status})
                 entry["applied"] = True
-                if partial_note:
-                    entry["note"] = partial_note
+                if fallback_note:
+                    entry["note"] = fallback_note
                 elif len(hits) > 1:
                     entry["note"] = f"동명 {len(hits)}건 전부 적용"
         elif f.verdict == "신규애매성":
