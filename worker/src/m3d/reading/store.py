@@ -91,8 +91,10 @@ def replace_region(cfg: Config, dataset: str, region: str,
     ambiguity 는 자연키가 같으면 옛 id·crop_rel_path 를 이어받는다(크롭 링크 보존).
     시트·페이지 id 를 해석하지 못한 행은 NULL 로 밀어넣지 않고 failed 로 세되,
     어느 행이 왜 빠졌는지 `failed_rows` 와 경고 로그에 남긴다(`_failed_row`).
+    결정(decisions)이 달린 ambiguity 는 삭제·재삽입하지 않는다 — 사용자 답변이
+    재판독보다 우선(M2b 설계 D3).
     """
-    kept = failed = 0
+    kept = failed = protected = 0
     failed_rows: list[dict] = []
     with psycopg.connect(cfg.require_db_url()) as conn:
         with conn.cursor() as cur:
@@ -104,6 +106,11 @@ def replace_region(cfg: Config, dataset: str, region: str,
         region_sheet_ids = [sid for o, sid in sheet_ids.items() if o[0] == region]
 
         with conn.cursor() as cur:
+            # 보호 집합: 결정이 달린 ambiguity (M2b D3) — 삭제·덮어쓰기 금지
+            cur.execute("select distinct ambiguity_id from decisions where project_id = %s",
+                        (project_id,))
+            protected_ids = [str(r[0]) for r in cur.fetchall()]
+
             # 삭제 전에 자연키 → (id, crop_rel_path) 맵을 뜬다
             cur.execute(
                 "select id, basis_sheet_id, sheet_page_id, item, mm_bbox, crop_rel_path "
@@ -111,13 +118,15 @@ def replace_region(cfg: Config, dataset: str, region: str,
                 (project_id, region_sheet_ids))
             keep = {_natural_key(r[1], r[2], r[3], r[4]): (r[0], r[5])
                     for r in cur.fetchall()}
+            protected_keys = {k for k, (aid, _crop) in keep.items() if str(aid) in protected_ids}
 
             cur.execute("delete from readings where project_id = %s and region = %s",
                         (project_id, region))
-            # rows_a 가 비어도 무조건 실행한다 — 옛 행 잔존이 멱등을 깬다
+            # rows_a 가 비어도 무조건 실행한다 — 옛 행 잔존이 멱등을 깬다. 보호 id 는 남긴다.
             cur.execute(
-                "delete from ambiguities where project_id = %s and basis_sheet_id = any(%s)",
-                (project_id, region_sheet_ids))
+                "delete from ambiguities where project_id = %s and basis_sheet_id = any(%s) "
+                "and id <> all(%s::uuid[])",
+                (project_id, region_sheet_ids, protected_ids))
 
             n_r = 0
             for r in rows_r:
@@ -147,6 +156,9 @@ def replace_region(cfg: Config, dataset: str, region: str,
                     failed_rows.append(_failed_row("ambiguity", a.item, a.basis_ord,
                                                    a.basis_page_no, sid is not None))
                     continue
+                if _natural_key(sid, pid, a.item, a.mm_bbox) in protected_keys:
+                    protected += 1
+                    continue
                 old = keep.get(_natural_key(sid, pid, a.item, a.mm_bbox))
                 if old is not None:
                     kept += 1
@@ -164,4 +176,4 @@ def replace_region(cfg: Config, dataset: str, region: str,
         conn.commit()
 
     return {"readings": n_r, "ambiguities": n_a, "kept": kept, "failed": failed,
-            "failed_rows": failed_rows}
+            "protected": protected, "failed_rows": failed_rows}

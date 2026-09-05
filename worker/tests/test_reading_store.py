@@ -32,10 +32,11 @@ def _a(item, ord_="B01", page_no=1, mm_bbox=None):
 class FakeDb:
     """sheets·sheet_pages·ambiguities 만 흉내낸다 — 나머지는 SQL 기록으로 검사."""
 
-    def __init__(self, ambiguities=()):
+    def __init__(self, ambiguities=(), decisions=()):
         self.sheets = {"A01": "s-a01", "B01": "s-b01", "B02": "s-b02"}
         self.pages = {("A01", 1): "p-a01-1", ("B01", 1): "p-b01-1", ("B02", 1): "p-b02-1"}
         self.ambiguities = list(ambiguities)
+        self.decisions = list(decisions)
         self.sql, self.inserted_r, self.inserted_a = [], [], []
         self.committed = False
 
@@ -55,10 +56,13 @@ class FakeCursor:
             self._rows = list(self.db.sheets.items())
         elif s.startswith("select s.ord, sp.page_no"):
             self._rows = [(o, n, i) for (o, n), i in self.db.pages.items()]
+        elif s.startswith("select distinct ambiguity_id from decisions"):
+            self._rows = [(d,) for d in self.db.decisions]
         elif s.startswith("select id, basis_sheet_id"):
             self._rows = list(self.db.ambiguities)
         elif s.startswith("delete from ambiguities"):
-            self.db.ambiguities = []
+            protected = set(params[2]) if params and len(params) > 2 else set()
+            self.db.ambiguities = [a for a in self.db.ambiguities if a[0] in protected]
         elif s.startswith("insert into readings"):
             self.db.inserted_r.append(params)
         elif s.startswith("insert into ambiguities"):
@@ -140,7 +144,8 @@ def test_ambiguities_deleted_even_when_new_result_is_empty(cfg, monkeypatch):
     assert len(dels) == 1
     assert sorted(dels[0][1][1]) == ["s-b01", "s-b02"]     # 계열 시트 전체가 대상
     assert db.inserted_a == [] and db.committed is True
-    assert res == {"readings": 0, "ambiguities": 0, "kept": 0, "failed": 0, "failed_rows": []}
+    assert res == {"readings": 0, "ambiguities": 0, "kept": 0, "failed": 0,
+                   "protected": 0, "failed_rows": []}
 
 
 def test_same_natural_key_keeps_id_and_crop_path(cfg, monkeypatch):
@@ -176,7 +181,8 @@ def test_replace_region_inserts_readings_with_region_and_round(cfg, monkeypatch)
     _patch(monkeypatch, db)
     rows_r, _rows_a = build_rows("B", [_r("두께", ord_="B01")], [], round_no=2)
     res = store.replace_region(cfg, "ds", "B", rows_r, [])
-    assert res == {"readings": 1, "ambiguities": 0, "kept": 0, "failed": 0, "failed_rows": []}
+    assert res == {"readings": 1, "ambiguities": 0, "kept": 0, "failed": 0,
+                   "protected": 0, "failed_rows": []}
     assert len(db.inserted_r) == 1
     params = db.inserted_r[0]
     # insert into readings (project_id, region, item, value_raw, unit,
@@ -219,3 +225,30 @@ def test_replace_region_reports_which_rows_failed_and_why(cfg, monkeypatch, capl
          "reason": "페이지 없음"},
     ]
     assert "Z99" in caplog.text and "B01 p2" in caplog.text
+
+
+def test_decided_ambiguity_is_protected_from_delete_and_reinsert(cfg, monkeypatch):
+    """결정이 달린 ambiguity 는 재판독이 지우지도 덮어쓰지도 않는다 (M2b 설계 D3)."""
+    db = FakeDb(ambiguities=[("kept-id", "s-b01", "p-b01-1", "해석", BBOX,
+                              "data/derived/ds/crops/kept-id.png")],
+                decisions=["kept-id"])
+    _patch(monkeypatch, db)
+    _rows_r, rows_a = build_rows("B", [], [_a("해석")], round_no=3)
+    res = store.replace_region(cfg, "ds", "B", [], rows_a)
+    assert res["protected"] == 1 and res["ambiguities"] == 0 and res["kept"] == 0
+    delete_sql, delete_params = next((s, p) for s, p in db.sql
+                                     if s.startswith("delete from ambiguities"))
+    assert "id <> all(%s::uuid[])" in delete_sql and delete_params[2] == ["kept-id"]
+    assert db.inserted_a == []                      # 같은 자연키 행도 재삽입하지 않는다
+    assert db.ambiguities[0][0] == "kept-id"        # 원래 행 그대로
+
+
+def test_undecided_rows_still_replaced_when_others_protected(cfg, monkeypatch):
+    db = FakeDb(ambiguities=[("kept-id", "s-b01", "p-b01-1", "해석", BBOX, None),
+                             ("old-id", "s-b02", "p-b02-1", "다른", BBOX, None)],
+                decisions=["kept-id"])
+    _patch(monkeypatch, db)
+    _rows_r, rows_a = build_rows("B", [], [_a("해석"), _a("다른", ord_="B02")], round_no=3)
+    res = store.replace_region(cfg, "ds", "B", [], rows_a)
+    assert res["protected"] == 1 and res["ambiguities"] == 1 and res["kept"] == 1
+    assert [p[0] for p in db.inserted_a] == ["old-id"]  # 미결정 행만 자연키로 id 승계 재삽입

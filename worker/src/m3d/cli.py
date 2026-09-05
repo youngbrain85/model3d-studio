@@ -14,6 +14,7 @@ from m3d.catalog import run as catalog_run
 from m3d.config import load_config
 from m3d.convert import run as convert_run
 from m3d.reading import crops as crops_run
+from m3d.reading import publish as publish_run
 from m3d.reading import region as reading_region
 from m3d.reading import sheet as reading_sheet
 from m3d.reading import store as reading_store
@@ -220,6 +221,25 @@ def crops(
     raise typer.Exit(code=1 if r["failures"] else 0)
 
 
+@app.command()
+def publish(
+    dataset: str = typer.Argument(..., help="데이터셋 슬러그"),
+    force: bool = typer.Option(False, "--force", help="이미 올라가 있어도 재업로드"),
+) -> None:
+    """[5] 크롭 PNG 를 비공개 Storage 버킷 crops 에 업로드 — 질문 카드 이미지 (M2b 설계 §4-1)."""
+    cfg = load_config()
+    try:
+        r = publish_run.run_publish(cfg, dataset, force=force)
+    except RuntimeError as exc:
+        typer.echo(f"실패: {exc}")
+        raise typer.Exit(code=1) from None
+    typer.echo(f"업로드 {r['uploaded']}건 / 스킵 {r['skipped']}건 / 실패 {len(r['failures'])}건 / 전체 {r['total']}건")
+    typer.echo(f"uploaded={r['uploaded']} skipped={r['skipped']} failures={len(r['failures'])} total={r['total']}")
+    for aid, err in r["failures"]:
+        typer.echo(f"  실패 {aid}: {err}")
+    raise typer.Exit(code=1 if r["failures"] else 0)
+
+
 def _read_pages(cfg, dataset, pages, *, force, cache_only):
     """페이지별 시트 판독. (계열별 [(ord, out)], 총비용, 실패목록) 을 돌려준다."""
     outs: dict[str, list] = {}
@@ -357,7 +377,7 @@ def read(
             continue
         typer.echo(f"[{reg}] DB 반영 readings {res['readings']} / "
                    f"ambiguities {res['ambiguities']} / id 보존 {res['kept']} / "
-                   f"미해석 {res['failed']}")
+                   f"보호 {res['protected']} / 미해석 {res['failed']}")
         _echo_failed_rows(reg, res)
 
     _finish(total_cost, failures)
@@ -424,7 +444,7 @@ def review(
         typer.echo(f"[{reg}] 지적 {len(log)}건(반영 {applied}, 기각 {rejected}, "
                    f"미종결 {len(unresolved)}) → readings {res['readings']} / "
                    f"ambiguities {res['ambiguities']} / id 보존 {res['kept']} / "
-                   f"미해석 {res['failed']}  기록: {path.name}")
+                   f"보호 {res['protected']} / 미해석 {res['failed']}  기록: {path.name}")
         for e in unresolved:
             typer.echo(f"  [{reg}] 미종결 {e['target_item']!r}: {e.get('note', '')}")
         _echo_failed_rows(reg, res)

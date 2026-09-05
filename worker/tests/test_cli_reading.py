@@ -164,7 +164,7 @@ def test_review_applies_findings_then_writes_rows_and_log(monkeypatch):
 
     def _replace(cfg, dataset, region, rows_r, rows_a):
         order.append(("replace", region, rows_r, rows_a))
-        return {"readings": 1, "ambiguities": 1, "kept": 0, "failed": 0}
+        return {"readings": 1, "ambiguities": 1, "kept": 0, "failed": 0, "protected": 0}
 
     def _save(cfg, dataset, region, log_arg):
         order.append(("save", region, log_arg is log))
@@ -251,7 +251,7 @@ def test_read_force_overwrites_review_rows(monkeypatch):
 
     def _replace(cfg, dataset, region, rows_r, rows_a):
         db_calls.append(region)
-        return {"readings": 0, "ambiguities": 0, "kept": 0, "failed": 0}
+        return {"readings": 0, "ambiguities": 0, "kept": 0, "failed": 0, "protected": 0}
 
     monkeypatch.setattr(reading_store, "replace_region", _replace)
 
@@ -290,7 +290,7 @@ def test_review_summary_counts_rejected_and_unresolved_and_names_unresolved(monk
     monkeypatch.setattr(reading_store, "replace_region",
                         lambda cfg, dataset, region, rows_r, rows_a:
                         {"readings": 0, "ambiguities": 0, "kept": 0, "failed": 0,
-                         "failed_rows": []})
+                         "protected": 0, "failed_rows": []})
     monkeypatch.setattr(cli_mod, "_save_review", lambda *a, **k: Path("review-B.json"))
 
     result = runner.invoke(app, ["review", "ds", "--region", "B", "--cache-only"])
@@ -311,6 +311,7 @@ def test_read_prints_each_unresolved_fk_row_with_reason(monkeypatch):
     monkeypatch.setattr(reading_store, "replace_region",
                         lambda cfg, dataset, region, rows_r, rows_a:
                         {"readings": 5, "ambiguities": 2, "kept": 0, "failed": 1,
+                         "protected": 0,
                          "failed_rows": [{"kind": "ambiguity", "item": "경간구성 표기 방식 차이",
                                           "ord": "A03", "page_no": 2, "reason": "페이지 없음"}]})
 
