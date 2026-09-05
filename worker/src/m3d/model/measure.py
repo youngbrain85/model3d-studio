@@ -1,0 +1,457 @@
+"""독립 재실측 (지식베이스 §6-2, M3 설계 D5) — GLB 재로드 실측 vs ModelSpec 자체 유도 기대값.
+
+검증관 역할: 빌더(builder.py·builder_full.py)를 import 하지 않는다 — 자기참조 검증 방지.
+기대값은 modelspec.json(ModelSpec)에서 본 모듈이 독립적으로 유도한다(내공 H 는 도면 계수 a_dwg
+그대로, 소핏은 상판두께+내공+하판두께, 받침 하면은 EL 검증치 …). 참조 measure_ab1_p4p5_v2.py
+의 항목·구조를 그대로 잇는다(항목명 동일 → compare-model 이 이름으로 대조).
+- 월드 전개: scene graph 노드 순회(KB §2-16 — geometry 직접 순회 금지)
+- 허용오차: 길이 5mm / 개수 0 / 각도 0.5°
+- 슬라이스 실측: mesh.section (z-법선 = 횡단면, y-법선 = 격벽 개구 수평 절단)
+"""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+import numpy as np
+import trimesh
+
+from m3d.model.spec import ModelSpec
+
+TOL = 0.005
+TOL_MM = 5.0
+TOL_ANG = 0.5
+
+
+def _fmt(v: float) -> str:
+    """항목명용 숫자 표기 — 정수는 천단위 콤마, 소수는 %g."""
+    return "{:,}".format(int(round(v))) if abs(v - round(v)) < 1e-9 else "%g" % v
+
+
+# ══ 기대값 유도 (ModelSpec → 자체 계산, 빌더 무관) ═══════════════════════════════
+class Expect:
+    def __init__(self, s: ModelSpec):
+        self.s = s
+        c, b = s.coord, s.box
+        self.Z_P4, self.Z_P5 = c.z_p4, c.z_p5
+        self.SPAN = c.z_p5 - c.z_p4
+        self.EL_P4, self.EL_P5 = self.el(c.z_p4), self.el(c.z_p5)
+        self.TOP_P4, self.TOP_P5 = self.top_y(c.z_p4), self.top_y(c.z_p5)
+        self.T_TOP0 = self.t_of(b.top_t, 0.0)
+        self.T_BOT0 = self.t_of(b.bot_t, 0.0)
+        self.SOFFIT_P4 = self.TOP_P4 - (b.h_pier + self.T_TOP0 + self.T_BOT0)
+        self.BRG_BOT = {p: el - c.y_datum for p, el in s.bearing.el_check.items()}
+        self.Y_MIN_ALL = min(self.BRG_BOT.values()) - s.bearing.mortar[0] - s.bearing.block[1]
+        pave = c.deck_drop - c.t_slab_crown                     # 포장 두께(계획고 − crown)
+        self.CROWN_P4 = self.EL_P4 - pave - c.y_datum
+        self.CROWN_P5 = self.EL_P5 - pave - c.y_datum
+        sl = s.slab
+        self.BARRIER_LR_TOP = max(self.CROWN_P4, self.CROWN_P5) - sl.slope * (sl.half_width - sl.barrier[0]) + sl.barrier[1]
+        self.Z_SUP = [c.z_p4 - s.wg.fl_w / 2, c.z_p5 + s.wg.fl_w / 2]
+        self.Z_ALL = [c.z_p4 - s.bearing.sole[0] / 2, c.z_p5 + s.bearing.sole[0] / 2]
+        d = s.diaphragm
+        n = d.n_cell
+        self.N_DIA = n + 1
+        self.DIA_Z = [c.z_p4 + d.support_t / 2] + [c.z_p4 + d.spacing * k for k in range(1, n)] + [c.z_p5 - d.support_t / 2]
+        htab = {round(dd, 3): h for dd, h in d.h_table}
+        self.DIA_H = []
+        for k in range(n + 1):
+            kk = min(k, n - k)
+            self.DIA_H.append(b.h_pier * 1000.0 if kk == 0 else htab.get(round(kk * d.spacing, 3), b.h_mid) * 1000.0)
+        self.DIA_OPEN = [(d.support_open[0] if k in (0, n) else d.interior_open[0]) * 1000.0 for k in range(n + 1)]
+        self.DIA_Y0 = {"support": d.support_sill + d.support_open[1] / 2, "interior": d.sill_cl + d.interior_open[1] / 2}
+        self.N_FRM = n
+        self.FRM_Z = [c.z_p4 + s.frame.offset + d.spacing * k for k in range(n)]
+        r = s.rib
+        self.X3 = self.cols(r.top_pier.cols, r.top_pier.pitch)
+        self.X8 = self.cols(r.top_mid.cols, r.top_mid.pitch)
+        self.Z_RIB_PIER = c.z_p4 + min(5.0, min(r.top_switch[0], r.bot_switch[0]) / 2)   # 지점존 대표점
+        self.Z_RIB_MID = (c.z_p4 + c.z_p5) / 2
+        self.N_WG = 2 * (n + 1)
+        self.WG_TIP = b.x_web + s.wg.length
+        self.WG_NO = s.wg.first_no + 1                            # 실측 대표: 두 번째 WG(P4+spacing)
+        self.STRUT_ANG = s.wg.strut_angle_deg
+        self.N_BRG = 4
+        self.SOLE_MM = s.bearing.sole[0] * 1000.0
+        self.N_RIB = self.rib_strip_count()
+        self.N_HST = 2 + len(s.hstiff.lower_factors) * 2 * 2
+        self.N_MESH = (4 + 4 + self.N_DIA + 6 * self.N_FRM + self.N_RIB + self.N_WG * 3
+                       + self.N_WG + self.N_HST + 1 + 3 + self.N_BRG * 4)
+
+    # ── 프로파일 ────────────────────────────────────────────────────────────────
+    def el(self, z):
+        c = self.s.coord
+        return c.el0 + c.grade * (z - c.z_sta3400)
+
+    def top_y(self, z):
+        c = self.s.coord
+        return self.el(z) - c.deck_drop - c.y_datum
+
+    @staticmethod
+    def t_of(zone, d):
+        for (d0, d1, t) in zone:
+            if d0 - 1e-9 <= d <= d1 + 1e-9:
+                return t
+        raise ValueError("존 밖 d: %r" % d)
+
+    def h_mm(self, d):
+        """§1 내공 H(d) — 도면 계수 a_dwg 그대로(빌더의 정규화 계수와 독립)."""
+        b = self.s.box
+        if d <= b.l_flat:
+            return b.h_pier * 1000.0
+        if d >= b.l_flat + b.l_para:
+            return b.h_mid * 1000.0
+        return (b.h_mid + b.a_dwg * (b.l_flat + b.l_para - d) ** 2) * 1000.0
+
+    def h_at_z(self, z):
+        return self.h_mm(min(z - self.Z_P4, self.Z_P5 - z))
+
+    @staticmethod
+    def cols(n, pitch):
+        return [round((i - (n - 1) / 2.0) * pitch, 6) for i in range(n)]
+
+    def h_stations(self):
+        b = self.s.box
+        lp = b.l_flat + b.l_para
+        z4, z5 = self.Z_P4, self.Z_P5
+        return [("P4 받침선", z4 + 0.001), ("P4+%g 등고경계" % b.l_flat, z4 + b.l_flat),
+                ("P4+%g 포물선중간" % (b.l_flat + b.l_para / 2), z4 + b.l_flat + b.l_para / 2),
+                ("P4+%g 포물선종점" % lp, z4 + lp), ("중앙 s=%g" % (self.SPAN / 2), z4 + self.SPAN / 2),
+                ("P5−%g" % lp, z5 - lp), ("P5−%g" % b.l_flat, z5 - b.l_flat), ("P5 받침선", z5 - 0.001)]
+
+    def rib_strip_count(self):
+        """§4 존 모델 스트립 수 — 지점존 2 + 전이존 2 + 중앙존, SP04 가 놓인 존은 분절."""
+        r, b = self.s.rib, self.s.box
+        z_sp = b.z_sp04_offset
+        n = 0
+        for pier, mid, sw in ((r.top_pier, r.top_mid, r.top_switch), (r.bot_pier, r.bot_mid, r.bot_switch)):
+            pier_split = 1 if z_sp < sw[0] else 0                     # P4측 지점존 분절
+            mid_split = 1 if sw[1] < z_sp < self.SPAN - sw[1] else 0  # 중앙존 분절
+            n += pier.cols * (2 + pier_split) + (pier.cols + mid.cols) * 2 + mid.cols * (1 + mid_split)
+        return n
+
+
+# ══ 월드 전개·슬라이스 유틸 ═══════════════════════════════════════════════════════
+def world_meshes(sc: trimesh.Scene) -> dict[str, trimesh.Trimesh]:
+    out = {}
+    for node in sc.graph.nodes_geometry:
+        T, gname = sc.graph[node]
+        m = sc.geometry[gname].copy()
+        m.apply_transform(T)
+        out[str(gname)] = m
+    return out
+
+
+def sect_z(mesh, z0):
+    try:
+        s = mesh.section(plane_origin=[0.0, 0.0, z0], plane_normal=[0.0, 0.0, 1.0])
+    except Exception:
+        return None
+    return None if s is None else np.asarray(s.vertices)
+
+
+def sect_y(mesh, y0):
+    try:
+        return mesh.section(plane_origin=[0.0, y0, 0.0], plane_normal=[0.0, 1.0, 0.0])
+    except Exception:
+        return None
+
+
+def x_gap_at(path3d):
+    """수평 슬라이스 경로의 x-구간 합집합에서 x=0 을 포함하는 갭 폭[mm] (개구 폭 실측)."""
+    V = np.asarray(path3d.vertices)
+    ivs = []
+    for ent in path3d.entities:
+        pts = ent.points
+        for a, b in zip(pts[:-1], pts[1:]):
+            x1, x2 = V[a][0], V[b][0]
+            ivs.append((min(x1, x2), max(x1, x2)))
+    ivs.sort()
+    merged: list[tuple[float, float]] = []
+    for lo, hi in ivs:
+        if merged and lo <= merged[-1][1] + 1e-6:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], hi))
+        else:
+            merged.append((lo, hi))
+    left = max((hi for lo, hi in merged if hi <= 0), default=None)
+    right = min((lo for lo, hi in merged if lo >= 0), default=None)
+    if left is None or right is None:
+        return None
+    return (right - left) * 1000.0
+
+
+# ══ 대조 누산기 ═══════════════════════════════════════════════════════════════════
+class Checks:
+    def __init__(self):
+        self.rows: list[dict] = []
+
+    def add(self, name, exp, meas, tol, unit=""):
+        e = np.atleast_1d(np.asarray(exp, dtype=float))
+        m = np.atleast_1d(np.asarray(meas, dtype=float))
+        if len(e) != len(m):
+            ok, dev = False, None
+        else:
+            dev = float(np.max(np.abs(e - m))) if len(e) else 0.0
+            ok = bool(np.isfinite(dev)) and dev <= tol + 1e-9
+        def val(a):
+            return [round(float(v), 4) for v in a] if len(a) != 1 else round(float(a[0]), 4)
+        self.rows.append({
+            "항목": name, "단위": unit, "기대": val(e), "실측": val(m),
+            "허용오차": tol, "최대편차": None if dev is None or not np.isfinite(dev) else round(dev, 4),
+            "판정": "PASS" if ok else "FAIL"})
+        return ok
+
+    def add_info(self, name, meas, note, unit=""):
+        self.rows.append({"항목": name, "단위": unit, "기대": "사양 미기재(" + note + ")",
+                          "실측": meas, "허용오차": None, "최대편차": None, "판정": "INFO"})
+
+    def add_missing(self, name, detail):
+        self.rows.append({"항목": name, "단위": "", "기대": "노드 존재", "실측": detail,
+                          "허용오차": None, "최대편차": None, "판정": "FAIL"})
+
+    def summary(self):
+        n_pass = sum(1 for c in self.rows if c["판정"] == "PASS")
+        n_fail = sum(1 for c in self.rows if c["판정"] == "FAIL")
+        n_info = sum(1 for c in self.rows if c["판정"] == "INFO")
+        return {"검증항목": len(self.rows), "PASS": n_pass, "FAIL": n_fail, "INFO": n_info}
+
+
+# ══ 실측 섹션 (각각 독립 — 노드 누락은 FAIL 1건으로 기록) ═════════════════════════
+def sec_bbox(W, E: Expect, ck: Checks, out: dict):
+    names = sorted(W)
+
+    def group_bounds(keys):
+        lo = np.min([W[n].bounds[0] for n in keys], axis=0)
+        hi = np.max([W[n].bounds[1] for n in keys], axis=0)
+        return lo, hi
+    lo_a, hi_a = group_bounds(names)
+    sup = [n for n in names if "_BRG_" not in n]
+    lo_s, hi_s = group_bounds(sup)
+    hw = E.s.slab.half_width
+    ck.add("bbox 전체 x [최소,최대] (§8 폭원 %g)" % (2 * hw), [-hw, hw], [lo_a[0], hi_a[0]], TOL, "m")
+    ck.add("bbox 전체 y 최소 (§10 블록 하면 = 받침하면−%s−%s)" % (_fmt(E.s.bearing.mortar[0] * 1000), _fmt(E.s.bearing.block[1] * 1000)),
+           E.Y_MIN_ALL, lo_a[1], TOL, "m")
+    ck.add("bbox 전체 z [최소,최대] (§10 받침선±솔플레이트 %s)" % _fmt(E.s.bearing.sole[0] * 500), E.Z_ALL, [lo_a[2], hi_a[2]], TOL, "m")
+    ck.add("bbox 상부 x [최소,최대]", [-hw, hw], [lo_s[0], hi_s[0]], TOL, "m")
+    ck.add("bbox 상부 y 최소 (§0·§1 P4 소핏 = 강상판상면−%s)" % _fmt((E.s.box.h_pier + E.T_TOP0 + E.T_BOT0) * 1000),
+           E.SOFFIT_P4, lo_s[1], TOL, "m")
+    ck.add("bbox 상부 z [최소,최대] (§6 받침선±WG 플랜지 %s)" % _fmt(E.s.wg.fl_w * 500), E.Z_SUP, [lo_s[2], hi_s[2]], TOL, "m")
+    bar_tops = {b: float(W["AB1_S5_BARRIER_" + b].bounds[1][1]) for b in ("L", "R", "CTR")}
+    ck.add("bbox 전체 y 최대 = 방호벽 최고점 (내부일관)", max(bar_tops.values()), hi_a[1], 0.001, "m")
+    out["bbox"] = {
+        "전체": {"x": [round(float(lo_a[0]), 4), round(float(hi_a[0]), 4)],
+                 "y": [round(float(lo_a[1]), 4), round(float(hi_a[1]), 4)],
+                 "z": [round(float(lo_a[2]), 4), round(float(hi_a[2]), 4)]},
+        "상부구조": {"x": [round(float(lo_s[0]), 4), round(float(hi_s[0]), 4)],
+                     "y": [round(float(lo_s[1]), 4), round(float(hi_s[1]), 4)],
+                     "z": [round(float(lo_s[2]), 4), round(float(hi_s[2]), 4)]}}
+    out["_bar_tops"] = bar_tops
+
+
+def sec_h_profile(W, E: Expect, ck: Checks, out: dict):
+    TOPM, BOTM = W["AB1_S5_BOX_TOP"], W["AB1_S5_BOX_BOT"]
+    rows = []
+    for label, z0 in E.h_stations():
+        vt, vb = sect_z(TOPM, z0), sect_z(BOTM, z0)
+        h = (float(vt[:, 1].min()) - float(vb[:, 1].max())) * 1000.0 if vt is not None and vb is not None else float("nan")
+        h_exp = E.h_at_z(z0)
+        ok = ck.add("내공 H " + label + " (§1 H식)", h_exp, h, TOL_MM, "mm")
+        rows.append({"위치": label, "z": round(z0, 3), "기대_mm": round(h_exp, 1),
+                     "실측_mm": round(h, 1), "판정": "PASS" if ok else "FAIL"})
+    out["내공_H_프로파일"] = rows
+
+
+def sec_deck_top(W, E: Expect, ck: Checks, out: dict):
+    TOPM = W["AB1_S5_BOX_TOP"]
+    for label, z0 in (("P4", E.Z_P4 + 0.001), ("P5", E.Z_P5 - 0.001)):
+        vt = sect_z(TOPM, z0)
+        ck.add("강상판 상면 y @" + label + " (§0 계획고−%g)" % E.s.coord.deck_drop, E.top_y(z0),
+               float(vt[:, 1].max()) if vt is not None else float("nan"), TOL, "m")
+
+
+def sec_diaphragms(W, E: Expect, ck: Checks, out: dict):
+    """판 z 위치는 수평슬라이스 |x|>2.0(순수 판 구간) z중앙, 판높이는 내공 클램프 유효높이 (참조 measure 주의사항 계승)."""
+    TOPM, BOTM = W["AB1_S5_BOX_TOP"], W["AB1_S5_BOX_BOT"]
+    n = E.N_DIA
+    dia_names = ["AB1_S5_DIA%02d" % (k + 1) for k in range(n)]
+    present = [nm for nm in dia_names if nm in W]
+    dia_z, dia_h, dia_open, rows, embeds = [], [], [], [], []
+    for k, nm in enumerate(dia_names):
+        if nm not in W:
+            continue
+        b = W[nm].bounds
+        y0 = float(b[0][1]) + (E.DIA_Y0["support"] if k in (0, n - 1) else E.DIA_Y0["interior"])
+        s = sect_y(W[nm], y0)
+        sv = np.asarray(s.vertices)
+        plate = sv[np.abs(sv[:, 0]) > 2.0]
+        zc = float((plate[:, 2].min() + plate[:, 2].max()) / 2)
+        gap = x_gap_at(s)
+        vt, vb = sect_z(TOPM, zc), sect_z(BOTM, zc)
+        top_in, bot_in = float(vt[:, 1].min()), float(vb[:, 1].max())
+        h_eff = (min(float(b[1][1]), top_in) - max(float(b[0][1]), bot_in)) * 1000.0
+        h_phys = float(b[1][1] - b[0][1]) * 1000.0
+        embeds.append([round((float(b[1][1]) - top_in) * 1000.0, 2), round((bot_in - float(b[0][1])) * 1000.0, 2)])
+        dia_z.append(zc); dia_h.append(h_eff); dia_open.append(gap if gap is not None else -1.0)
+        rows.append({"격벽": nm[-5:], "z실측": round(zc, 4), "z기대": round(E.DIA_Z[k], 4),
+                     "유효높이실측_mm": round(h_eff, 1), "판높이기대_mm": E.DIA_H[k],
+                     "물리판높이_mm": round(h_phys, 1), "물림_상하_mm": embeds[-1],
+                     "개구폭실측_mm": None if gap is None else round(gap, 1), "개구폭기대_mm": E.DIA_OPEN[k]})
+    d = E.s.diaphragm
+    ck.add("격벽 수 (§2 %d면)" % n, n, len(present), 0, "개")
+    ck.add("격벽 판 z 위치 %d (§2 %s 그리드·지점판 내측 플러시)" % (n, _fmt(d.spacing * 1000)), E.DIA_Z, dia_z, TOL, "m")
+    ck.add("격벽 유효높이(내공 충전) %d (§2 지점 %s / H표)" % (n, _fmt(E.s.box.h_pier * 1000)), E.DIA_H, dia_h, TOL_MM, "mm")
+    ck.add("격벽 개구 폭 %d (§2 지점 %s / 일반 %s)" % (n, _fmt(d.support_open[0] * 1000), _fmt(d.interior_open[0] * 1000)),
+           E.DIA_OPEN, dia_open, TOL_MM, "mm")
+    if embeds:
+        emb = np.asarray(embeds)
+        ck.add_info("격벽 판 상·하 물림(플레이트 내 매입)",
+                    {"상_mm": [float(emb[:, 0].min()), float(emb[:, 0].max())],
+                     "하_mm": [float(emb[:, 1].min()), float(emb[:, 1].max())]},
+                    "전 %d면 상·하 각 ~5mm 매입 — 내공·개구·외형 무영향, 모델링 기법" % n, "mm")
+    out["격벽_상세"] = rows
+
+
+def sec_frames(W, E: Expect, ck: Checks, out: dict):
+    names = sorted(W)
+    frm = [nm for nm in names if "_FRM" in nm]
+    frm_ids = sorted({re.search(r"FRM(\d+)", nm).group(1) for nm in frm})
+    roles: dict[str, list[str]] = {}
+    for nm in frm:
+        roles.setdefault(re.search(r"FRM\d+_(\w+)$", nm).group(1), []).append(nm)
+    frm_z = []
+    for fid in frm_ids:
+        b = W["AB1_S5_FRM%s_TRW" % fid].bounds
+        frm_z.append(float((b[0][2] + b[1][2]) / 2))
+    n = E.N_FRM
+    ck.add("프레임 수 (§3 %d개)" % n, n, len(frm_ids), 0, "개")
+    ck.add("프레임 z 그리드 (§3 격벽 사이 %s)" % _fmt(E.s.frame.offset * 1000), E.FRM_Z, sorted(frm_z), TOL, "m")
+    ck.add("프레임 부재 총수 (§3 6부재×%d=%d)" % (n, 6 * n), 6 * n, len(frm), 0, "개")
+    ck.add("프레임 역할별 부재 수 6종 각 %d (TRW·TRF·BRW·BRF·VSL·VSR)" % n,
+           [n] * 6, [len(roles.get(r, [])) for r in ("TRW", "TRF", "BRW", "BRF", "VSL", "VSR")], 0, "개")
+
+
+def sec_ribs(W, E: Expect, ck: Checks, out: dict):
+    TOPM, BOTM = W["AB1_S5_BOX_TOP"], W["AB1_S5_BOX_BOT"]
+    ribs = [nm for nm in sorted(W) if "_RIB_" in nm]
+
+    def rib_columns(z0):
+        vt, vb = sect_z(TOPM, z0), sect_z(BOTM, z0)
+        y_mid = (float(vt[:, 1].min()) + float(vb[:, 1].max())) / 2
+        top_x, bot_x = [], []
+        for nm in ribs:
+            b = W[nm].bounds
+            if not (b[0][2] - 1e-6 <= z0 <= b[1][2] + 1e-6):
+                continue
+            v = sect_z(W[nm], z0)
+            if v is None:
+                continue
+            (top_x if float(v[:, 1].mean()) > y_mid else bot_x).append(float(v[:, 0].mean()))
+        return sorted(top_x), sorted(bot_x)
+    r = E.s.rib
+    zp, zm = E.Z_RIB_PIER, E.Z_RIB_MID
+    tp, bp = rib_columns(zp)
+    tm, bm = rib_columns(zm)
+    lp, lm = "z=−%g" % abs(zp), "z=−%g" % abs(zm)
+    ck.add("종리브 %s 상판 열수 (§4 지점존 %d열)" % (lp, r.top_pier.cols), r.top_pier.cols, len(tp), 0, "열")
+    ck.add("종리브 %s 상판 x 위치 (§4 @%s)" % (lp, _fmt(r.top_pier.pitch * 1000)), E.cols(r.top_pier.cols, r.top_pier.pitch), tp, TOL, "m")
+    ck.add("종리브 %s 하판 열수 (§4 지점존 %d열)" % (lp, r.bot_pier.cols), r.bot_pier.cols, len(bp), 0, "열")
+    ck.add("종리브 %s 하판 x 위치 (§4 @%s)" % (lp, _fmt(r.bot_pier.pitch * 1000)), E.cols(r.bot_pier.cols, r.bot_pier.pitch), bp, TOL, "m")
+    ck.add("종리브 %s 상판 열수 (§4 중앙존 %d열)" % (lm, r.top_mid.cols), r.top_mid.cols, len(tm), 0, "열")
+    ck.add("종리브 %s 상판 x 위치 (§4 @%s)" % (lm, _fmt(r.top_mid.pitch * 1000)), E.cols(r.top_mid.cols, r.top_mid.pitch), tm, TOL, "m")
+    ck.add("종리브 %s 하판 열수 (§4 중앙존 %d열)" % (lm, r.bot_mid.cols), r.bot_mid.cols, len(bm), 0, "열")
+    ck.add("종리브 %s 하판 x 위치 (§4 @%s)" % (lm, _fmt(r.bot_mid.pitch * 1000)), E.cols(r.bot_mid.cols, r.bot_mid.pitch), bm, TOL, "m")
+    out["종리브_열"] = {lp.replace("−", "-") + "_상판_x": [round(v, 4) for v in tp], lp.replace("−", "-") + "_하판_x": [round(v, 4) for v in bp],
+                        lm.replace("−", "-") + "_상판_x": [round(v, 4) for v in tm], lm.replace("−", "-") + "_하판_x": [round(v, 4) for v in bm]}
+
+
+def sec_wg_cs(W, E: Expect, ck: Checks, out: dict):
+    names = sorted(W)
+    wg_main = [nm for nm in names if re.fullmatch(r"AB1_S5_WG\d{3}[LR]", nm)]
+    cs_all = [nm for nm in names if re.fullmatch(r"AB1_S5_CS\d{3}[LR]", nm)]
+    n_pair = E.N_WG // 2
+    ck.add("WG 본체 수 (§6 %d쌍=%d)" % (n_pair, E.N_WG), E.N_WG, len(wg_main), 0, "개")
+    ck.add("CS 세그 수 (§7 %d×2=%d)" % (n_pair, E.N_WG), E.N_WG, len(cs_all), 0, "개")
+    tag = "WG%03dL" % E.WG_NO
+    wg = W["AB1_S5_" + tag]
+    tip = float(wg.bounds[0][0]) if abs(wg.bounds[0][0]) > abs(wg.bounds[1][0]) else float(wg.bounds[1][0])
+    ck.add("%s 선단 x (§6 −(%s+%s)=−%s)" % (tag, _fmt(E.s.box.x_web * 1000), _fmt(E.s.wg.length * 1000), _fmt(E.WG_TIP * 1000)),
+           -E.WG_TIP, tip, TOL, "m")
+    ck.add("%s z 중심 (P4+%g)" % (tag, E.s.diaphragm.spacing), E.Z_P4 + E.s.diaphragm.spacing,
+           float((wg.bounds[0][2] + wg.bounds[1][2]) / 2), TOL, "m")
+    stv = np.asarray(W["AB1_S5_%s_ST" % tag].vertices)
+    cov = np.cov((stv - stv.mean(axis=0)).T)
+    evals, evecs = np.linalg.eigh(cov)
+    axis = evecs[:, np.argmax(evals)]
+    ang = float(np.degrees(np.arctan2(abs(axis[1]), abs(axis[0]))))
+    ck.add("스트럿 축 각도 %s_ST (§6 %g°)" % (tag, E.STRUT_ANG), E.STRUT_ANG, ang, TOL_ANG, "도")
+
+
+def sec_bearings(W, E: Expect, ck: Checks, out: dict):
+    names = sorted(W)
+    ck.add("받침 기수 (§10 P4·P5 각 2기)", E.N_BRG, len({nm.rsplit("_", 1)[0] for nm in names if "_BRG_" in nm}), 0, "기")
+    bot_meas, bot_exp, xc_meas, sole_dims = [], [], [], []
+    for p, i in (("P4", 1), ("P4", 2), ("P5", 1), ("P5", 2)):
+        body = W["AB1_S5_BRG_%s_%d_BODY" % (p, i)]
+        sole = W["AB1_S5_BRG_%s_%d_SOLE" % (p, i)]
+        bot_meas.append(float(body.bounds[0][1]))
+        bot_exp.append(E.BRG_BOT[p])
+        xc_meas.append(float((body.bounds[0][0] + body.bounds[1][0]) / 2))
+        sb = sole.bounds
+        sole_dims += [float(sb[1][0] - sb[0][0]) * 1000, float(sb[1][2] - sb[0][2]) * 1000]
+    xb = E.s.bearing.x
+    ck.add("받침 하면 y 4기 (§10 EL.'X'−%g: P4 %.3f / P5 %.3f)" % (E.s.coord.y_datum, E.BRG_BOT["P4"], E.BRG_BOT["P5"]),
+           bot_exp, bot_meas, TOL, "m")
+    ck.add("받침 x 중심 4기 (§10 횡간격 %s → ±%g)" % (_fmt(2 * xb * 1000), xb), [-xb, xb, -xb, xb], xc_meas, TOL, "m")
+    ck.add("솔플레이트 평면 4기×(x,z) (§10 %s×%s)" % (_fmt(E.SOLE_MM), _fmt(E.SOLE_MM)), [E.SOLE_MM] * 8, sole_dims, TOL_MM, "mm")
+
+
+def sec_slab(W, E: Expect, ck: Checks, out: dict):
+    slab = W["AB1_S5_SLAB"]
+    sl, c = E.s.slab, E.s.coord
+    ck.add("슬래브 전폭 (§8 %s)" % _fmt(2 * sl.half_width * 1000), 2 * sl.half_width * 1000.0,
+           float(slab.bounds[1][0] - slab.bounds[0][0]) * 1000.0, TOL_MM, "mm")
+    vs = sect_z(slab, E.Z_P4 + 0.01)
+    pave = c.deck_drop - c.t_slab_crown
+    ck.add("슬래브 crown 상면 y @P4 (§0 Q2·§8: 계획고−포장%s = %.3f−%g)" % (_fmt(pave * 1000), E.EL_P4 - pave, c.y_datum),
+           E.CROWN_P4 + c.grade * 0.01, float(vs[:, 1].max()) if vs is not None else float("nan"), TOL, "m")
+    ck.add("방호벽 조수 (§8 연단 2 + 중앙 1 = 3)", 3, len([nm for nm in W if "_BARRIER_" in nm]), 0, "조")
+    bar_tops = out.get("_bar_tops") or {b: float(W["AB1_S5_BARRIER_" + b].bounds[1][1]) for b in ("L", "R", "CTR")}
+    ck.add("연단 방호벽 상단 y L·R (§8 P5 연단 수평면+%s = %.3f)" % (_fmt(sl.barrier[1] * 1000), E.BARRIER_LR_TOP),
+           [E.BARRIER_LR_TOP] * 2, [bar_tops["L"], bar_tops["R"]], TOL, "m")
+    ck.add_info("중앙 방호벽 상단 y", round(bar_tops["CTR"], 4), "§8 중앙 %s×상세(§판독) — 높이 SPEC 미기재" % _fmt(sl.center_barrier * 1000), "m")
+
+
+def sec_mesh_count(W, E: Expect, ck: Checks, out: dict):
+    ck.add("총 메시 수 (구성 유도 %d — §1~§10)" % E.N_MESH, E.N_MESH, len(W), 0, "개")
+
+
+SECTIONS = [("bbox", sec_bbox), ("내공 H", sec_h_profile), ("강상판 상면", sec_deck_top), ("격벽", sec_diaphragms),
+            ("프레임", sec_frames), ("종리브", sec_ribs), ("WG·CS", sec_wg_cs), ("받침", sec_bearings),
+            ("슬래브·방호벽", sec_slab), ("메시 수", sec_mesh_count)]
+
+
+def run(glb: Path, spec: ModelSpec) -> dict:
+    """GLB 재로드 → 전 섹션 실측 → 참조 measure v2 와 동일 구조의 결과 dict."""
+    W = world_meshes(trimesh.load(str(glb)))
+    E = Expect(spec)
+    ck = Checks()
+    out: dict = {}
+    for label, fn in SECTIONS:
+        try:
+            fn(W, E, ck, out)
+        except KeyError as exc:
+            ck.add_missing("%s 섹션 — 노드 누락" % label, "KeyError: %s" % exc)
+    out.pop("_bar_tops", None)
+    agg = ck.summary()
+    result = {
+        "대상": "%s — 독립 재실측 검증" % Path(glb).name,
+        "치수정본": "modelspec.json (ModelSpec) — 기대값은 본 모듈이 자체 유도 (빌더 미참조)",
+        "월드전개": "graph 노드 순회 (KB §2-16)",
+        "허용오차": {"길이_mm": TOL_MM, "개수": 0, "각도_도": TOL_ANG},
+    }
+    result.update(out)
+    result["대조"] = ck.rows
+    result["집계"] = agg
+    result["종합판정"] = "PASS" if agg["FAIL"] == 0 else "FAIL"
+    return result

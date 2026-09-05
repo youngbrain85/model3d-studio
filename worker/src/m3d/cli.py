@@ -543,5 +543,30 @@ def render(
     typer.echo(f"renders={len(paths)}")
 
 
+@app.command()
+def measure(
+    dataset: str = typer.Argument(..., help="데이터셋 슬러그"),
+) -> None:
+    """[8] GLB 독립 재실측 — 기대값은 modelspec.json 에서 자체 유도, 빌더 미참조 (M3 설계 D5)."""
+    import json as _json
+    from m3d.model import measure as model_measure
+    cfg = load_config()
+    spec = model_io.load_modelspec(cfg, dataset)
+    out_dir = model_io.model_dir(cfg, dataset)
+    glb = out_dir / "AB1_P4P5.glb"
+    if not glb.is_file():
+        typer.echo(f"실패: {glb} 없음 — `m3d build {dataset}` 먼저")
+        raise typer.Exit(code=1)
+    r = model_measure.run(glb, spec)
+    (out_dir / "measure.json").write_text(_json.dumps(r, ensure_ascii=False, indent=1), encoding="utf-8")
+    for c in r["대조"]:
+        dev = "" if c["최대편차"] is None else f"  |편차|max={c['최대편차']}"
+        typer.echo(f"[{c['판정']}] {c['항목']}{dev}")
+    agg = r["집계"]
+    typer.echo(f"종합판정: {r['종합판정']} / 출력: {out_dir / 'measure.json'}")
+    typer.echo(f"measure pass={agg['PASS']} fail={agg['FAIL']} info={agg['INFO']}")
+    raise typer.Exit(code=1 if agg["FAIL"] else 0)
+
+
 if __name__ == "__main__":
     sys.exit(app())
