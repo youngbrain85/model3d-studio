@@ -74,6 +74,7 @@ class FrameRow(BaseModel):
     top_web: tuple[float, float]        # (t, h)
     bot_web: tuple[float, float]
     vstiff: tuple[float, float, float]  # (t, w, h)
+    top_flange_t: float | None = None   # None → 웹 두께와 동일 [A6]; G1 은 BOM 26t
 
 
 class Frame(BaseModel):
@@ -85,7 +86,7 @@ class Frame(BaseModel):
         FrameRow(d_list=[7.0], name="F6", top_web=(0.012, 0.25), bot_web=(0.036, 0.35), vstiff=(0.026, 0.26, 2.545)),
         FrameRow(d_list=[9.8], name="F9", top_web=(0.012, 0.25), bot_web=(0.036, 0.35), vstiff=(0.018, 0.20, 2.311)),
         FrameRow(d_list=[12.6], name="F10", top_web=(0.012, 0.25), bot_web=(0.030, 0.36), vstiff=(0.020, 0.18, 2.179)),
-        FrameRow(d_list=[15.4, 18.2, 21.0, 23.8], name="G1", top_web=(0.020, 0.35), bot_web=(0.026, 0.35), vstiff=(0.014, 0.15, 2.054)),
+        FrameRow(d_list=[15.4, 18.2, 21.0, 23.8], name="G1", top_web=(0.020, 0.35), bot_web=(0.026, 0.35), vstiff=(0.014, 0.15, 2.054), top_flange_t=0.026),
         FrameRow(d_list=[26.6, 29.4, 32.2, 35.0], name="D", top_web=(0.026, 0.35), bot_web=(0.012, 0.25), vstiff=(0.014, 0.15, 2.162)),
     ]
 
@@ -119,7 +120,8 @@ class HStiff(BaseModel):
 
 
 class WG(BaseModel):
-    """§6 외측가로보 26쌍."""
+    """§6 외측가로보 26쌍 (WG096~121 L/R)."""
+    first_no: int = 96
     length: float = 4.45
     flange_slope: float = 0.0195
     flange_flat0: float = 0.1
