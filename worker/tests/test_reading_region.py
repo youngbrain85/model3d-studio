@@ -45,9 +45,11 @@ class FakeMessages:
     def __init__(self, texts):
         self.texts = list(texts)
         self.calls = 0
+        self.sent: list[dict] = []      # 재시도 사유를 확인하기 위한 요청 기록
 
     def create(self, **kwargs):
         self.calls += 1
+        self.sent.append(kwargs)
         return _resp(self.texts.pop(0))
 
 
@@ -294,6 +296,24 @@ def test_review_new_ambiguity_bbox_outside_paper_retries(cfg):
     assert client.messages.calls == 2
     assert out.findings[0].new_ambiguity.mm_bbox == BBOX
     assert usage["retried"] is True
+
+
+def test_merge_reports_all_violations_in_one_message(cfg):
+    """[F2] 첫 위반에서 멈추면 재시도가 남은 위반을 모르고 같은 실수를 반복한다 —
+    위반 전건을 한 사유로 모아 알린다."""
+    sheet_outs = [("B01", SheetReadOut(readings=[], ambiguities=[]))]
+    pages = {("B01", 1): PAPER}
+    bad = _merge_json_full(
+        readings=[_reading_dict(item="A", page_no=2),                       # 없는 페이지
+                  _reading_dict(item="B", mm_bbox=[10.0, 10.0, 900.0, 20.0])])  # 용지 밖
+    good = _merge_json_full(readings=[_reading_dict(page_no=1)])
+    client = FakeClient([bad, good])
+
+    merge_region(cfg, "ds", "B", sheet_outs, pages, client=client)
+
+    note = client.messages.sent[1]["messages"][-1]["content"][-1]["text"]
+    assert "2건" in note
+    assert "p2" in note and "900.0" in note
 
 
 def test_merge_cache_hit_revalidated_falls_back_to_real_call_when_stale(cfg):

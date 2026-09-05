@@ -259,6 +259,19 @@ def _save_review(cfg, dataset, region, log):
     return path
 
 
+def _validated_region(region: str | None) -> str | None:
+    """계열 키는 ord 첫 글자 한 글자다(A~F) — 접두 필터가 아니다.
+
+    'C1' 같은 값을 조용히 받으면 대상이 0페이지가 되어 '대상 페이지가 없습니다'
+    (= convert 미실행)로 오진하게 된다. 입력 단계에서 되돌려준다.
+    """
+    if region is not None and not (len(region) == 1 and "A" <= region <= "Z"):
+        raise typer.BadParameter(
+            f"계열은 한 글자 대문자여야 합니다 (예: --region B) — 받은 값: {region!r}",
+            param_hint="--region")
+    return region
+
+
 def _finish(total_cost, failures):
     typer.echo(f"\n합계 비용 ${total_cost:.4f} / 실패 {len(failures)}건")
     for ref, err in failures:
@@ -269,7 +282,7 @@ def _finish(total_cost, failures):
 @app.command()
 def read(
     dataset: str = typer.Argument(..., help="데이터셋 슬러그"),
-    region: str = typer.Option(None, "--region", help="계열 필터 (A~F)"),
+    region: str = typer.Option(None, "--region", help="계열 필터 — 한 글자 대문자 (A~F)"),
     sheet: str = typer.Option(None, "--sheet", help="시트 ord 필터 — DB 반영 없음"),
     force: bool = typer.Option(False, "--force", help="캐시 무시·검토 결과 덮어쓰기"),
     cache_only: bool = typer.Option(False, "--cache-only",
@@ -279,6 +292,7 @@ def read(
     if force and cache_only:
         typer.echo("--force 와 --cache-only 는 함께 쓸 수 없습니다.")
         raise typer.Exit(code=2)
+    region = _validated_region(region)
 
     cfg = load_config()
     pages = reading_sheet.list_pages(cfg, dataset, region=region, ord_=sheet)
@@ -337,7 +351,7 @@ def read(
 @app.command()
 def review(
     dataset: str = typer.Argument(..., help="데이터셋 슬러그"),
-    region: str = typer.Option(None, "--region", help="계열 필터 (A~F)"),
+    region: str = typer.Option(None, "--region", help="계열 필터 — 한 글자 대문자 (A~F)"),
     force: bool = typer.Option(
         False, "--force",
         help="검토 호출만 캐시 무시(시트 판독·통합은 캐시 사용; "
@@ -349,6 +363,7 @@ def review(
     if force and cache_only:
         typer.echo("--force 와 --cache-only 는 함께 쓸 수 없습니다.")
         raise typer.Exit(code=2)
+    region = _validated_region(region)
 
     cfg = load_config()
     pages = reading_sheet.list_pages(cfg, dataset, region=region)

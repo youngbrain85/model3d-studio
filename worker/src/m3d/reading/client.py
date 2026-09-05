@@ -64,16 +64,37 @@ def log_usage(cfg: Config, dataset: str, record: dict) -> dict:
     return row
 
 
-def _with_retry_note(messages: list[dict], reason: str) -> list[dict]:
+# 재시도 사유 상한. 500자에서 자르면 "검증 실패 5건: …" 목록의 뒷부분이 사라져
+# 모델이 남은 위반을 모른 채 같은 실수를 되풀이한다.
+MAX_RETRY_REASON_CHARS = 3000
+
+# 단계별 안내문 — 판독 전용 문구(선택지 2~4개)를 통합·검토에 붙이면 지시가 어긋난다.
+STAGE_RETRY_GUIDANCE = {
+    "read": "모든 필수 필드를 채우고(page_no·mm_bbox 4개 실수·선택지 2~4개) "
+            "같은 JSON 스키마로만 답하라.",
+    "merge": "각 항목의 ord·page_no 는 입력에 실제로 있는 시트·페이지여야 하고, "
+             "mm_bbox 는 그 페이지 용지(mm) 안이어야 한다. 같은 JSON 스키마로만 답하라.",
+    "review": "신규 애매성의 ord·page_no 는 통합 결과에 있는 시트·페이지여야 하고, "
+              "mm_bbox 는 그 페이지 용지(mm) 안이어야 한다. 같은 JSON 스키마로만 답하라.",
+}
+DEFAULT_RETRY_GUIDANCE = "같은 JSON 스키마로만 답하라."
+
+# 절단은 스키마 위반이 아니다 — "필드를 채우라"고 하면 응답이 더 길어져 또 잘린다.
+TRUNCATED_REASON = ("직전 응답이 max_tokens 에서 절단됨 — 각 항목의 서술을 줄이고 "
+                    "항목 수는 유지하며 JSON 만 출력하라.")
+
+
+def _with_retry_note(messages: list[dict], reason: str, *, stage: str,
+                     truncated: bool = False) -> list[dict]:
     """마지막 user 메시지 끝에 재시도 사유를 덧붙인다.
 
     새 user 메시지를 붙이지 않는다 — Messages API 는 역할 교대를 요구한다.
+    `truncated` 면 사유 대신 절단 전용 문구를 쓴다.
     """
     last = messages[-1]
-    note = {"type": "text", "text":
-            f"[재시도] 직전 응답이 검증에 실패했다: {reason}\n"
-            "모든 필수 필드를 채우고(page_no·mm_bbox 4개 실수·선택지 2~4개) "
-            "같은 JSON 스키마로만 답하라."}
+    head = TRUNCATED_REASON if truncated else f"직전 응답이 검증에 실패했다: {reason}"
+    guidance = STAGE_RETRY_GUIDANCE.get(stage, DEFAULT_RETRY_GUIDANCE)
+    note = {"type": "text", "text": f"[재시도] {head}\n{guidance}"}
     return [*messages[:-1], {**last, "content": [*last["content"], note]}]
 
 
@@ -118,8 +139,15 @@ def call_structured(client, cfg: Config, dataset: str, *, model: str, system: st
             "cached": False, "attempt": attempt, "retried": attempt > 1,
             "stop_reason": resp.stop_reason,
         })
+        truncated = resp.stop_reason == "max_tokens"
         text = next((b.text for b in resp.content if b.type == "text"), None)
         if text is None:
+            # 사고 토큰이 max_tokens 를 먹어 텍스트 블록이 아예 없는 경우(실측 2026-09-02)는
+            # 재시도로 흡수한다 — 원인이 다른 '텍스트 없음' 은 그대로 실패시킨다.
+            if truncated and attempt == 1:
+                attempt_messages = _with_retry_note(messages, "", stage=stage,
+                                                    truncated=True)
+                continue
             raise RuntimeError(
                 f"구조화 출력 없음 (stage={stage}, stop_reason={resp.stop_reason})")
         try:
@@ -130,5 +158,7 @@ def call_structured(client, cfg: Config, dataset: str, *, model: str, system: st
         except ValueError as exc:   # pydantic ValidationError 는 ValueError 하위
             if attempt == 2:
                 raise
-            attempt_messages = _with_retry_note(messages, str(exc)[:500])
+            attempt_messages = _with_retry_note(
+                messages, str(exc)[:MAX_RETRY_REASON_CHARS], stage=stage,
+                truncated=truncated)
     raise AssertionError("unreachable")

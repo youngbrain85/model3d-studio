@@ -58,23 +58,33 @@ PageKey = tuple[str, int]
 PaperMm = tuple[float, float]
 
 
-def _check_page_and_bbox(ord_: str, page_no: int, mm_bbox: list[float],
-                         pages: dict[PageKey, PaperMm]) -> None:
+def page_and_bbox_violations(ord_: str, page_no: int, mm_bbox: list[float],
+                             pages: dict[PageKey, PaperMm]) -> list[str]:
     """acceptance §4·§7 재발 방지 — 존재하지 않는 페이지·용지 밖 bbox 를 여기서 반려한다.
 
     이전에는 ord 만 봤다: A03(p1 만 존재)에 대해 LLM 이 지어낸 page_no=2 가 스키마 검증을
     통과해버려 resolve_ids 에서야(조용히) 유실됐고, 용지 밖 mm_bbox(A02·D02)는 크롭 단계에서야
     실패로 드러났다. 둘 다 여기서 앞당겨 잡아 post_validate 재시도 경로를 태운다.
+
+    예외를 바로 올리지 않고 위반 문자열 목록(정상이면 [])을 돌려준다 — 호출부가 전건을
+    모아 한 사유로 알려야 재시도가 나머지 위반을 모른 채 같은 실수를 되풀이하지 않는다.
+    시트 판독(`sheet.read_sheet`)도 pages 에 자기 페이지 하나만 담아 이 함수를 재사용한다.
     """
     paper = pages.get((ord_, page_no))
     if paper is None:
-        raise ValueError(f"통합 결과에 입력에 없는 페이지: {ord_} p{page_no}")
+        return [f"입력에 없는 페이지: {ord_} p{page_no}"]
     w, h = paper
     x0, y0, x1, y1 = mm_bbox
     if not (0.0 <= min(x0, x1) and max(x0, x1) <= w
             and 0.0 <= min(y0, y1) and max(y0, y1) <= h):
-        raise ValueError(
-            f"mm_bbox 가 용지 밖: {ord_} p{page_no} {mm_bbox} / paper {paper}")
+        return [f"mm_bbox 가 용지 밖: {ord_} p{page_no} {mm_bbox} / paper {paper}"]
+    return []
+
+
+def raise_violations(label: str, problems: list[str]) -> None:
+    """위반 전건을 한 ValueError 로 올린다 — call_structured 가 이 문자열을 재시도 사유로 쓴다."""
+    if problems:
+        raise ValueError(f"{label} 검증 실패 {len(problems)}건: " + "; ".join(problems))
 
 
 def _call(cfg: Config, dataset: str, client, *, stage: str, region: str, model: str,
@@ -139,14 +149,16 @@ def merge_region(cfg: Config, dataset: str, region: str,
             + json.dumps(payload, ensure_ascii=False))
 
     def _check(out: RegionMergeOut) -> None:
+        problems: list[str] = []
         seen = {r.ord for r in out.readings} | {a.ord for a in out.ambiguities}
         bad = sorted(seen - known)
         if bad:
-            raise ValueError(f"통합 결과에 입력에 없는 ord: {bad}")
+            problems.append(f"입력에 없는 ord: {bad}")
         for r in out.readings:
-            _check_page_and_bbox(r.ord, r.page_no, r.mm_bbox, pages)
+            problems += page_and_bbox_violations(r.ord, r.page_no, r.mm_bbox, pages)
         for a in out.ambiguities:
-            _check_page_and_bbox(a.ord, a.page_no, a.mm_bbox, pages)
+            problems += page_and_bbox_violations(a.ord, a.page_no, a.mm_bbox, pages)
+        raise_violations("통합 결과", problems)
 
     return _call(cfg, dataset, client, stage="merge", region=region, model=MODEL_READ,
                  system=prompts.merge_system(region), user_text=user,
@@ -163,12 +175,14 @@ def review_region(cfg: Config, dataset: str, region: str, merged: RegionMergeOut
             + json.dumps(merged.model_dump(), ensure_ascii=False))
 
     def _check(out: ReviewOut) -> None:
+        problems: list[str] = []
         new_ambs = [f.new_ambiguity for f in out.findings if f.new_ambiguity is not None]
         bad = sorted({a.ord for a in new_ambs} - known)
         if bad:
-            raise ValueError(f"신규 애매성에 통합 결과에 없는 ord: {bad}")
+            problems.append(f"신규 애매성에 통합 결과에 없는 ord: {bad}")
         for a in new_ambs:
-            _check_page_and_bbox(a.ord, a.page_no, a.mm_bbox, pages)
+            problems += page_and_bbox_violations(a.ord, a.page_no, a.mm_bbox, pages)
+        raise_violations("검토 결과", problems)
 
     return _call(cfg, dataset, client, stage="review", region=region, model=MODEL_REVIEW,
                  system=prompts.review_system(region), user_text=user,

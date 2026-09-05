@@ -39,11 +39,17 @@
    .\worker\.venv\Scripts\m3d.exe catalog ab1-p4p5
    ```
 
-   아래 3개는 Anthropic API 비용이 발생한다(설계서 §2-1·§8 — 도면 판독·검토):
+   아래 2개는 Anthropic API 비용이 발생한다(설계서 §2-1·§8 — 도면 판독·검토):
 
    ```powershell
    .\worker\.venv\Scripts\m3d.exe read ab1-p4p5
    .\worker\.venv\Scripts\m3d.exe review ab1-p4p5
+   ```
+
+   크롭 생성은 LLM 을 부르지 않는다 — 이미 DB 에 있는 ambiguity 좌표로 PNG 를
+   잘라낼 뿐이라 무과금이다:
+
+   ```powershell
    .\worker\.venv\Scripts\m3d.exe crops ab1-p4p5
    ```
 

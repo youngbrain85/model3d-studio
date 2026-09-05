@@ -81,7 +81,10 @@ def replace_region(cfg: Config, dataset: str, region: str,
         with conn.cursor() as cur:
             project_id = _project_id(cur, dataset)
         sheet_ids, page_ids = resolve_ids(conn, project_id)
-        region_sheet_ids = [sid for o, sid in sheet_ids.items() if o.startswith(region)]
+        # 삭제 범위 = 이 계열의 시트 전체. 불변식: 계열 키는 ord 첫 글자 한 글자이므로
+        # `ord[0] == region` 이 곧 계열 소속이다(접두 일치는 'C1' 같은 값에 오작동한다 —
+        # cli._validated_region·sheet.list_pages 와 같은 규칙을 쓴다).
+        region_sheet_ids = [sid for o, sid in sheet_ids.items() if o[0] == region]
 
         with conn.cursor() as cur:
             # 삭제 전에 자연키 → (id, crop_rel_path) 맵을 뜬다

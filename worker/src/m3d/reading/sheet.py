@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -26,10 +27,13 @@ from m3d.reading.inputs import (
     sheet_text_excerpt,
     tile_titleblock,
 )
+from m3d.reading.region import page_and_bbox_violations, raise_violations
 from m3d.reading.schema import SheetReadOut
 from m3d.samples.manifest import sha256_file
 
 MAX_TOKENS = 8000
+
+log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -51,7 +55,9 @@ def list_pages(cfg: Config, dataset: str, region: str | None = None,
         stem = png.stem                       # {ord}_{drawing_no}_p{n}
         ord_part, rest = stem.split("_", 1)
         drawing_no, page_part = rest.rsplit("_p", 1)
-        if region and not ord_part.startswith(region):
+        # 계열 키는 ord 첫 글자 한 글자다(A~F). 접두 일치로 받으면 '--region C1' 이
+        # C10·C11 만 걸러 '계열 C' 로 착각하게 된다 — 첫 글자만 본다.
+        if region and ord_part[0] != region:
             continue
         if ord_ and ord_part != ord_:
             continue
@@ -103,10 +109,31 @@ def _build_messages(cfg: Config, dataset: str, page: PageRef) -> tuple[list[dict
     return [{"role": "user", "content": parts}], inputs
 
 
+def _check_sheet_out(page: PageRef, paper: tuple[float, float],
+                     out: SheetReadOut) -> None:
+    """시트 판독 결과의 근거 좌표 검증 — merge/review 와 같은 규칙을 같은 헬퍼로 건다.
+
+    이 시트는 페이지가 하나뿐이므로 pages 에 자기 자신만 담는다: 다른 page_no 를
+    근거로 대면 '입력에 없는 페이지' 로, 용지 밖 mm_bbox 는 '용지 밖' 으로 반려된다.
+    """
+    pages = {(page.ord, page.page_no): paper}
+    problems: list[str] = []
+    for r in out.readings:
+        problems += page_and_bbox_violations(page.ord, r.page_no, r.mm_bbox, pages)
+    for a in out.ambiguities:
+        problems += page_and_bbox_violations(page.ord, a.page_no, a.mm_bbox, pages)
+    raise_violations("시트 판독 결과", problems)
+
+
 def read_sheet(cfg: Config, dataset: str, page: PageRef, *,
                force: bool = False, cache_only: bool = False,
                client=None) -> tuple[SheetReadOut, dict]:
     system = prompts.sheet_system(page.region)
+    paper = page_paper_mm(cfg, dataset, page)
+
+    def _check(out: SheetReadOut) -> None:
+        _check_sheet_out(page, paper, out)
+
     messages, inputs = _build_messages(cfg, dataset, page)
     key = cache_key({
         "kind": "sheet",
@@ -123,11 +150,21 @@ def read_sheet(cfg: Config, dataset: str, page: PageRef, *,
     if not force:
         cached = load_cached(path)
         if cached is not None:
-            usage = log_usage(cfg, dataset, {
-                "stage": "read", "ord": page.ord, "page_no": page.page_no,
-                "model": MODEL_READ, "in": 0, "out": 0, "cached": True,
-                "attempt": 0, "retried": False, "stop_reason": None})
-            return SheetReadOut.model_validate(cached), usage
+            out = SheetReadOut.model_validate(cached)
+            stale_reason = None
+            try:
+                _check(out)
+            except ValueError as exc:
+                stale_reason = str(exc)
+            if stale_reason is None:
+                usage = log_usage(cfg, dataset, {
+                    "stage": "read", "ord": page.ord, "page_no": page.page_no,
+                    "model": MODEL_READ, "in": 0, "out": 0, "cached": True,
+                    "attempt": 0, "retried": False, "stop_reason": None})
+                return out, usage
+            log.warning(
+                "캐시된 출력이 post_validate 에 실패해 캐시 미스로 취급한다 "
+                "(stage=read ord=%s p%s): %s", page.ord, page.page_no, stale_reason)
 
     if cache_only:
         raise CacheMissError("read", f"{page.ord}p{page.page_no}", key)
@@ -136,7 +173,7 @@ def read_sheet(cfg: Config, dataset: str, page: PageRef, *,
         client or build_client(cfg), cfg, dataset,
         model=MODEL_READ, system=system, messages=messages,
         out_format=SheetReadOut, max_tokens=MAX_TOKENS, stage="read",
-        extra={"ord": page.ord, "page_no": page.page_no},
+        extra={"ord": page.ord, "page_no": page.page_no}, post_validate=_check,
     )
     save_cached(path, out.model_dump())
     return out, usage

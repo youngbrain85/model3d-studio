@@ -11,11 +11,12 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
+from m3d import cli as cli_mod
 from m3d.cli import app
 from m3d.reading import region as reading_region
 from m3d.reading import sheet as reading_sheet
 from m3d.reading import store as reading_store
-from m3d.reading.schema import RegionMergeOut, SheetReadOut
+from m3d.reading.schema import RegionMergeOut, ReviewOut, SheetReadOut
 from m3d.reading.sheet import PageRef
 
 runner = CliRunner()
@@ -37,6 +38,15 @@ def _env(tmp_path, monkeypatch):
 
 def _ok_usage(model="claude-sonnet-5"):
     return {"model": model, "in": 100, "out": 50, "cached": False}
+
+
+def _one_page_b01(monkeypatch):
+    """B 계열 1페이지가 캐시로 판독되는 상태 — 계열 단계만 보는 테스트의 공통 준비."""
+    monkeypatch.setattr(reading_sheet, "list_pages",
+                        lambda cfg, dataset, region=None, ord_=None: [_page("B01", "B")])
+    monkeypatch.setattr(reading_sheet, "read_sheet",
+                        lambda cfg, dataset, page, *, force, cache_only:
+                        (SheetReadOut(readings=[], ambiguities=[]), _ok_usage()))
 
 
 def test_db_exception_isolated_still_prints_total_and_exits_1(monkeypatch):
@@ -108,3 +118,144 @@ def test_page_failure_skips_region_merge_and_db(monkeypatch):
     assert merge_calls == [] and db_calls == []
     assert "시트 실패가 있어 통합" in result.output
     assert "실패 1건" in result.output
+
+
+# ---------------------------------------------------------------- F3: 계열 = 단일 문자
+
+
+@pytest.mark.parametrize("command", ["read", "review"])
+@pytest.mark.parametrize("bad", ["C1", "b", "AB"])
+def test_region_option_rejects_non_single_uppercase(command, bad):
+    """[F3] 계열 키는 ord 첫 글자 한 글자다 — 'C1' 같은 접두어를 조용히 받으면
+    빈 결과를 '대상 없음' 으로 오해하게 된다."""
+    result = runner.invoke(app, [command, "ds", "--region", bad])
+
+    assert result.exit_code != 0
+    assert "계열" in result.output
+
+
+# ------------------------------------------------- F4: review 경로 · has_review_rows 분기
+
+
+def test_review_applies_findings_then_writes_rows_and_log(monkeypatch):
+    """[F4] review 는 apply_findings → build_rows(round 3) → replace_region →
+    _save_review 순서로, 각 단계의 산출물을 그대로 다음 단계에 넘긴다."""
+    _one_page_b01(monkeypatch)
+    merged = RegionMergeOut(readings=[], ambiguities=[], notes=[])
+    reviewed = ReviewOut(findings=[])
+    finals, ambs, log = [], [], [{"applied": True}, {"applied": False}]
+    order = []
+
+    def _merge(cfg, dataset, region, sheet_outs, pages, **kw):
+        order.append(("merge", region, kw["force"], kw["cache_only"]))
+        return merged, _ok_usage()
+
+    def _review(cfg, dataset, region, m, pages, **kw):
+        order.append(("review", region, m is merged, kw["force"]))
+        return reviewed, _ok_usage("claude-fable-5")
+
+    def _apply(readings, ambiguities, findings):
+        order.append(("apply", findings is reviewed.findings))
+        return finals, ambs, log
+
+    def _build(region, readings, ambiguities, round_no):
+        order.append(("build", region, readings is finals, ambiguities is ambs, round_no))
+        return ["row-r"], ["row-a"]
+
+    def _replace(cfg, dataset, region, rows_r, rows_a):
+        order.append(("replace", region, rows_r, rows_a))
+        return {"readings": 1, "ambiguities": 1, "kept": 0, "failed": 0}
+
+    def _save(cfg, dataset, region, log_arg):
+        order.append(("save", region, log_arg is log))
+        return Path("review-B.json")
+
+    monkeypatch.setattr(reading_region, "merge_region", _merge)
+    monkeypatch.setattr(reading_region, "review_region", _review)
+    monkeypatch.setattr(reading_region, "apply_findings", _apply)
+    monkeypatch.setattr(reading_store, "build_rows", _build)
+    monkeypatch.setattr(reading_store, "replace_region", _replace)
+    monkeypatch.setattr(cli_mod, "_save_review", _save)
+
+    result = runner.invoke(app, ["review", "ds", "--region", "B", "--cache-only"])
+
+    assert result.exit_code == 0, result.output
+    assert [x[0] for x in order] == ["merge", "review", "apply", "build", "replace", "save"]
+    # 통합은 캐시 고정(force 는 검토 호출에만), 검토 반영은 round 3 로 기록된다
+    assert order[0] == ("merge", "B", False, True)
+    assert order[1] == ("review", "B", True, False)
+    assert order[2] == ("apply", True)
+    assert order[3] == ("build", "B", True, True, 3)
+    assert order[4] == ("replace", "B", ["row-r"], ["row-a"])
+    assert order[5] == ("save", "B", True)
+    assert "지적 2건(반영 1)" in result.output and "review-B.json" in result.output
+
+
+def test_review_db_exception_isolated_still_prints_total_and_exits_1(monkeypatch):
+    """[F4] review 의 DB 단계 예외도 계열 단위로 격리되고 합계 줄이 나온다."""
+    _one_page_b01(monkeypatch)
+    monkeypatch.setattr(reading_region, "merge_region",
+                        lambda cfg, dataset, region, sheet_outs, pages, **kw:
+                        (RegionMergeOut(readings=[], ambiguities=[], notes=[]), _ok_usage()))
+    monkeypatch.setattr(reading_region, "review_region",
+                        lambda cfg, dataset, region, merged, pages, **kw:
+                        (ReviewOut(findings=[]), _ok_usage("claude-fable-5")))
+    saved = []
+    monkeypatch.setattr(cli_mod, "_save_review", lambda *a, **k: saved.append(1))
+
+    def _boom(*a, **k):
+        raise RuntimeError("연결 끊김")
+
+    monkeypatch.setattr(reading_store, "replace_region", _boom)
+
+    result = runner.invoke(app, ["review", "ds", "--region", "B", "--cache-only"])
+
+    assert result.exit_code == 1
+    assert "합계 비용" in result.output
+    assert "B:db" in result.output and "RuntimeError" in result.output
+    assert saved == []          # DB 가 실패했으면 검토 기록도 남기지 않는다
+
+
+def test_read_keeps_existing_review_rows_and_skips_db(monkeypatch):
+    """[F4] 검토(round 3) 결과가 있는 계열은 read 가 덮어쓰지 않는다."""
+    _one_page_b01(monkeypatch)
+    monkeypatch.setattr(reading_store, "has_review_rows", lambda cfg, dataset, region: True)
+    merge_calls, db_calls = [], []
+    monkeypatch.setattr(reading_region, "merge_region",
+                        lambda *a, **k: merge_calls.append(1))
+    monkeypatch.setattr(reading_store, "replace_region",
+                        lambda *a, **k: db_calls.append(1))
+
+    result = runner.invoke(app, ["read", "ds", "--region", "B"])
+
+    assert result.exit_code == 0
+    assert "검토 결과 보존" in result.output
+    assert merge_calls == [] and db_calls == []
+
+
+def test_read_force_overwrites_review_rows(monkeypatch):
+    """[F4] --force 는 그 보존 게이트를 명시적으로 넘는다."""
+    _one_page_b01(monkeypatch)
+
+    def _has_review(cfg, dataset, region):
+        raise AssertionError("--force 면 게이트를 묻지 않는다")
+
+    monkeypatch.setattr(reading_store, "has_review_rows", _has_review)
+    monkeypatch.setattr(reading_region, "merge_region",
+                        lambda cfg, dataset, region, sheet_outs, pages, **kw:
+                        (RegionMergeOut(readings=[], ambiguities=[], notes=[]), _ok_usage()))
+    monkeypatch.setattr(reading_store, "build_rows",
+                        lambda region, readings, ambiguities, round_no: ([], []))
+    db_calls = []
+
+    def _replace(cfg, dataset, region, rows_r, rows_a):
+        db_calls.append(region)
+        return {"readings": 0, "ambiguities": 0, "kept": 0, "failed": 0}
+
+    monkeypatch.setattr(reading_store, "replace_region", _replace)
+
+    result = runner.invoke(app, ["read", "ds", "--region", "B", "--force"])
+
+    assert result.exit_code == 0, result.output
+    assert db_calls == ["B"]
+    assert "검토 결과 보존" not in result.output
