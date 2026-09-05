@@ -492,5 +492,56 @@ def modelspec(dataset: str = typer.Argument(..., help="데이터셋 슬러그"))
                f"default={stats['default']} derived={stats['derived']}")
 
 
+@app.command()
+def build(
+    dataset: str = typer.Argument(..., help="데이터셋 슬러그"),
+    pilot: bool = typer.Option(False, "--pilot", help="시범: 본체·격벽만 (승인 게이트용)"),
+) -> None:
+    """[6] ModelSpec → 3D 모델 GLB + self-check (M3 설계 §4)."""
+    import json as _json
+    from m3d.model import selfcheck as model_selfcheck
+    from m3d.model.builder import Builder
+    cfg = load_config()
+    try:
+        spec = model_io.load_modelspec(cfg, dataset)
+        b = Builder(spec)
+        named = b.build(pilot=pilot)
+        out_dir = model_io.model_dir(cfg, dataset)
+        glb = out_dir / ("AB1_P4P5_pilot.glb" if pilot else "AB1_P4P5.glb")
+        b.export(named, glb)
+    except (RuntimeError, AssertionError) as exc:
+        typer.echo(f"실패: {exc}")
+        raise typer.Exit(code=1) from None
+    r = model_selfcheck.run(named, b, pilot=pilot)
+    (out_dir / ("selfcheck_pilot.json" if pilot else "selfcheck.json")).write_text(
+        _json.dumps(r, ensure_ascii=False, indent=2), encoding="utf-8")
+    for c in r["checks"]:
+        tag = "PASS" if c["ok"] else ("SKIP" if c["ok"] is None else "FAIL")
+        typer.echo(f"[{tag}] {c['label']} — {c['detail']}")
+    typer.echo(f"메시 {r['meshes']}개 (수밀 {r['watertight']}) / 삼각형 {r['triangles']} / 출력: {glb}")
+    typer.echo(f"selfcheck pass={r['pass']} fail={r['fail']} skipped={r['skipped']} meshes={r['meshes']}")
+    raise typer.Exit(code=1 if r["fail"] else 0)
+
+
+@app.command()
+def render(
+    dataset: str = typer.Argument(..., help="데이터셋 슬러그"),
+    pilot: bool = typer.Option(False, "--pilot", help="시범 GLB·2장만"),
+) -> None:
+    """[7] GLB → 실척 정사영 렌더 세트 (M3 설계 §4)."""
+    from m3d.model import render as model_render
+    cfg = load_config()
+    spec = model_io.load_modelspec(cfg, dataset)
+    out_dir = model_io.model_dir(cfg, dataset)
+    glb = out_dir / ("AB1_P4P5_pilot.glb" if pilot else "AB1_P4P5.glb")
+    if not glb.is_file():
+        typer.echo(f"실패: {glb} 없음 — `m3d build {dataset}{' --pilot' if pilot else ''}` 먼저")
+        raise typer.Exit(code=1)
+    paths = model_render.run_render(glb, out_dir / "renders", spec, pilot=pilot)
+    for p in paths:
+        typer.echo(f"렌더: {p}")
+    typer.echo(f"renders={len(paths)}")
+
+
 if __name__ == "__main__":
     sys.exit(app())
