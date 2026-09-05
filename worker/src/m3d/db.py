@@ -131,7 +131,28 @@ def check(cfg: Config) -> dict:
             for slug, name, coord_system, coord_assumptions in cur.fetchall()
         ]
 
+        cur.execute("select region, status, count(*) from readings group by 1, 2 order by 1, 2")
+        reading_stats = [{"region": r, "status": s, "n": n} for r, s, n in cur.fetchall()]
+
+        cur.execute("select status, count(*) from ambiguities group by 1 order by 1")
+        ambiguity_stats = dict(cur.fetchall())
+
+        cur.execute("select count(*) from ambiguities where crop_rel_path is not null")
+        crops_ready = cur.fetchone()[0]
+
+        cur.execute("select count(*) from ambiguities where crop_rel_path is null")
+        crop_missing = cur.fetchone()[0]
+
+        cur.execute("select count(*) from assets where role = 'derived' "
+                    "and rel_path like '%%/crops/%%'")
+        crops_assets = cur.fetchone()[0]
+
     return {"counts": counts, "rls": rls, "projects": projects,
             "catalog_status_counts": catalog_status_counts,
             "from_content_filled": from_content_filled,
-            "pages_sized": pages_sized}
+            "pages_sized": pages_sized,
+            "reading_stats": reading_stats,
+            "ambiguity_stats": ambiguity_stats,
+            "crops_ready": crops_ready,
+            "crop_missing": crop_missing,
+            "crops_assets": crops_assets}

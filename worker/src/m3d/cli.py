@@ -146,6 +146,14 @@ def db_check() -> None:
         for note in project["coord_assumptions"]:
             typer.echo(f"가정·정정: {note}")
 
+    typer.echo("")
+    for row in result["reading_stats"]:
+        typer.echo(f"readings {row['region']}/{row['status']}: {row['n']}")
+    typer.echo(f"ambiguities: {result['ambiguity_stats']}")
+    # 아래 한 줄은 verify-m2a.ps1 이 정규식으로 읽는다 — 형식을 바꾸지 않는다(ASCII 고정)
+    typer.echo(f"crops_ready={result['crops_ready']} crop_missing={result['crop_missing']} "
+               f"crops_assets={result['crops_assets']}")
+
 
 @app.command()
 def seed(

@@ -39,6 +39,14 @@
    .\worker\.venv\Scripts\m3d.exe catalog ab1-p4p5
    ```
 
+   아래 3개는 Anthropic API 비용이 발생한다(설계서 §2-1·§8 — 도면 판독·검토):
+
+   ```powershell
+   .\worker\.venv\Scripts\m3d.exe read ab1-p4p5
+   .\worker\.venv\Scripts\m3d.exe review ab1-p4p5
+   .\worker\.venv\Scripts\m3d.exe crops ab1-p4p5
+   ```
+
 4. 웹:
 
    ```powershell
@@ -50,12 +58,18 @@
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\verify-m0.ps1
+powershell -ExecutionPolicy Bypass -File scripts\verify-m2a.ps1
 ```
+
+`verify-m2a.ps1` 은 `--cache-only` 로만 돌아 LLM 실호출을 하지 않는다(무과금 멱등 검증).
+로컬 캐시(`data/derived/ab1-p4p5/llm-cache`, gitignore)가 없으면 실패로 끝난다 — 정상이다.
 
 `make` 는 이 환경에 없다. `m3d` CLI 가 태스크 러너를 겸한다.
 
 ## 주의
 
 - `SAMPLE_SOURCE_DIR` · `REFERENCE_MODELS_DIR` 아래 참조 원본은 **읽기 전용**이다.
-- `SUPABASE_SERVICE_KEY` · `SUPABASE_DB_URL` 은 worker 전용 — 웹 번들·커밋 금지.
+- `SUPABASE_SERVICE_KEY` · `SUPABASE_DB_URL` · `ANTHROPIC_API_KEY` · `ANTHROPIC_WORKSPACE_ID` 는
+  worker 전용 — 웹 번들·커밋 금지. 값 목록은 `.env.example` 참고.
+- `m3d read` · `m3d review` 의 전제는 두 값(`ANTHROPIC_API_KEY`·`ANTHROPIC_WORKSPACE_ID`)이 채워진 `.env` 다.
 - 검증 없이 완료를 주장하지 않는다. 실패는 출력과 함께 실패로 보고한다.
