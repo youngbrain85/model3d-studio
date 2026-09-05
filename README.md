@@ -93,3 +93,21 @@ cd web; npm run dev                                   # http://localhost:5173 �
 
 카드: 숫자키 `1`~`4` 선택, `0` 모르겠다(권장안을 잠정 채택), `Enter` 결정, `←`/`→` 이동. 결정은 `decisions` 에 이력으로 쌓이고
 `ambiguities.status` 가 결정/잠정으로 바뀐다. 재판독(`read`/`review`)은 결정이 달린 애매성을 보존한다.
+
+## 3D 모델 (M3)
+
+SSOT(+결정)를 `ModelSpec` 으로 옮겨 P4~P5 정밀 모델(GLB)을 결정론 빌더로 만들고 3중 검증(self-check → 독립 재실측 → 렌더)한 뒤
+참조 정답(measure v2·GLB)과 대조한다. 아래 5개 명령은 **LLM 을 부르지 않는다**(무과금). 산출물은 `data/derived/<dataset>/model/`(gitignore).
+
+```powershell
+$env:PYTHONUTF8='1'
+.\worker\.venv\Scripts\m3d.exe modelspec ab1-p4p5       # ssot.json → modelspec.json (필드별 출처 ssot/decision/default/derived 통계)
+.\worker\.venv\Scripts\m3d.exe build ab1-p4p5 --pilot   # 시범: 본체·격벽만 → AB1_P4P5_pilot.glb + selfcheck_pilot.json (승인 게이트)
+.\worker\.venv\Scripts\m3d.exe build ab1-p4p5           # 전 부재 515 메시 → AB1_P4P5.glb + selfcheck.json (fail>0 → exit 1)
+.\worker\.venv\Scripts\m3d.exe measure ab1-p4p5         # 독립 재실측(빌더 미참조, 5mm/0/0.5°) → measure.json (fail>0 → exit 1)
+.\worker\.venv\Scripts\m3d.exe render ab1-p4p5          # 실척 정사영 4장 → renders/{side_context,front_section,bottom_iso,interior_cells}.png
+.\worker\.venv\Scripts\m3d.exe compare-model ab1-p4p5   # 참조 measure v2·GLB 대조 → compare.json (--ref 생략 시 REFERENCE_MODELS_DIR)
+```
+
+`ModelSpec` 스키마가 바뀌면 `modelspec.json` 을 다시 만든다 — `build` 는 저장 파일에 없는 필드를 발견하면 경고한다.
+합격 판정은 `data/derived/ab1-p4p5/model/acceptance-m3.md`(설계서 §1 ①~⑥).

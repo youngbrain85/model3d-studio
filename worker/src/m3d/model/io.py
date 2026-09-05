@@ -27,3 +27,26 @@ def load_modelspec(cfg: Config, dataset: str) -> ModelSpec:
     if not path.is_file():
         raise RuntimeError(f"modelspec.json 없음 — `m3d modelspec {dataset}` 먼저")
     return ModelSpec.model_validate(json.loads(path.read_text(encoding="utf-8"))["spec"])
+
+
+def missing_paths(current: dict, stored: dict, prefix: str = "") -> list[str]:
+    """스키마 드리프트 — 현재 ModelSpec 에는 있는데 저장된 JSON 에 없는 경로(기본값이 조용히 적용됨)."""
+    out: list[str] = []
+    for k, v in current.items():
+        path = f"{prefix}{k}"
+        if k not in stored:
+            out.append(path)
+        elif isinstance(v, dict) and isinstance(stored[k], dict):
+            out.extend(missing_paths(v, stored[k], path + "."))
+        elif isinstance(v, list) and isinstance(stored[k], list) and v and isinstance(v[0], dict):
+            for i, (cv, sv) in enumerate(zip(v, stored[k])):
+                if isinstance(sv, dict):
+                    out.extend(missing_paths(cv, sv, f"{path}[{i}]."))
+    return out
+
+
+def modelspec_drift(cfg: Config, dataset: str) -> list[str]:
+    """저장된 modelspec.json 이 현재 스키마보다 오래됐으면 누락 필드 경로 목록(비면 정상)."""
+    path = model_dir(cfg, dataset) / "modelspec.json"
+    stored = json.loads(path.read_text(encoding="utf-8"))["spec"]
+    return missing_paths(ModelSpec.model_validate(stored).model_dump(), stored)

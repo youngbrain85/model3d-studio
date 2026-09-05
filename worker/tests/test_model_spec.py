@@ -92,3 +92,13 @@ def test_default_spec_roundtrips_json():
     spec = ModelSpec()
     again = ModelSpec.model_validate_json(spec.model_dump_json())
     assert again == spec and len(leaf_paths(spec)) > 60
+
+
+def test_missing_paths_detects_schema_drift_in_nested_lists():
+    from m3d.model.io import missing_paths
+    cur = ModelSpec().model_dump()
+    stored = ModelSpec().model_dump()
+    del stored["frame"]["rows"][5]["top_flange_t"]
+    del stored["wg"]["first_no"]
+    assert missing_paths(cur, stored) == ["frame.rows[5].top_flange_t", "wg.first_no"]
+    assert missing_paths(cur, ModelSpec().model_dump()) == []

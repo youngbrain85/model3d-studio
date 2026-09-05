@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+from pathlib import Path
 from datetime import datetime, timezone
 
 import typer
@@ -504,6 +505,10 @@ def build(
     cfg = load_config()
     try:
         spec = model_io.load_modelspec(cfg, dataset)
+        drift = model_io.modelspec_drift(cfg, dataset)
+        if drift:
+            typer.echo(f"경고: modelspec.json 에 없는 필드 {len(drift)}개에 기본값 적용 — `m3d modelspec {dataset}` 재실행 권장: "
+                       + ", ".join(drift[:6]) + (" …" if len(drift) > 6 else ""))
         b = Builder(spec)
         named = b.build(pilot=pilot)
         out_dir = model_io.model_dir(cfg, dataset)
@@ -566,6 +571,40 @@ def measure(
     typer.echo(f"종합판정: {r['종합판정']} / 출력: {out_dir / 'measure.json'}")
     typer.echo(f"measure pass={agg['PASS']} fail={agg['FAIL']} info={agg['INFO']}")
     raise typer.Exit(code=1 if agg["FAIL"] else 0)
+
+
+@app.command("compare-model")
+def compare_model(
+    dataset: str = typer.Argument(..., help="데이터셋 슬러그"),
+    ref: Path = typer.Option(None, "--ref", help="참조 디렉터리(measure_ab1_p4p5_v2.json·AB1_P4P5_v2.glb). 기본 REFERENCE_MODELS_DIR"),
+) -> None:
+    """[9] 참조 measure v2·GLB 와 대조 → model/compare.json (M3 설계 D6, 합격 기준 ④)."""
+    import json as _json
+    from m3d.model import compare as model_compare
+    cfg = load_config()
+    out_dir = model_io.model_dir(cfg, dataset)
+    ref_dir = ref if ref is not None else cfg.require_reference_models_dir()
+    ours_json, ref_json = out_dir / "measure.json", ref_dir / "measure_ab1_p4p5_v2.json"
+    ours_glb, ref_glb = out_dir / "AB1_P4P5.glb", ref_dir / "AB1_P4P5_v2.glb"
+    for pth, hint in ((ours_json, f"`m3d measure {dataset}` 먼저"), (ref_json, "참조 디렉터리 확인"),
+                      (ours_glb, f"`m3d build {dataset}` 먼저"), (ref_glb, "참조 디렉터리 확인")):
+        if not pth.is_file():
+            typer.echo(f"실패: {pth} 없음 — {hint}")
+            raise typer.Exit(code=1)
+    ours = _json.loads(ours_json.read_text(encoding="utf-8"))
+    refd = _json.loads(ref_json.read_text(encoding="utf-8"))
+    r = model_compare.compare(ours, refd)
+    r["glb"] = model_compare.compare_glb(ours_glb, ref_glb)
+    (out_dir / "compare.json").write_text(_json.dumps(r, ensure_ascii=False, indent=1), encoding="utf-8")
+    for it in r["items"]:
+        if it["verdict"] != "match":
+            typer.echo(f"[{it['verdict']}] {it['path']}: ours={it['ours']} ref={it['ref']} {it['cause']}")
+    g = r["glb"]
+    typer.echo(f"glb: nodes {g['ours']['nodes']}/{g['ref']['nodes']} 공통 {g['common']} / 삼각형 {g['ours']['triangles']}/{g['ref']['triangles']} "
+               f"/ bbox 최대편차 {g['bbox_dev_max_m']} m (>1mm {g['bbox_dev_over_1mm']}) / 면수 동일 {g['faces_equal']}")
+    s = r["summary"]
+    typer.echo(f"출력: {out_dir / 'compare.json'}")
+    typer.echo(f"compare match={s['match']} mismatch={s['mismatch']} na={s['na']}")
 
 
 if __name__ == "__main__":
