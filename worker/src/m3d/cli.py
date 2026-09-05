@@ -18,6 +18,8 @@ from m3d.reading import publish as publish_run
 from m3d.reading import region as reading_region
 from m3d.reading import sheet as reading_sheet
 from m3d.reading import ssot as ssot_run
+from m3d.model import io as model_io
+from m3d.model import spec_rules as model_rules
 from m3d.reading import store as reading_store
 from m3d.reading.client import estimate_cost
 from m3d.samples.collect import DATASET, collect, manifest_path
@@ -467,6 +469,27 @@ def ssot(dataset: str = typer.Argument(..., help="데이터셋 슬러그")) -> N
     typer.echo(f"ssot_version={r['version']} changed={str(r['changed']).lower()} "
                f"readings={sum(c['readings'].values())} decided={c['decided']} "
                f"provisional={c['provisional']} open={c['open']}")
+
+
+@app.command()
+def modelspec(dataset: str = typer.Argument(..., help="데이터셋 슬러그")) -> None:
+    """[6 준비] SSOT + 결정 → ModelSpec (파라미터 사양, 출처 표기) (M3 설계 §3)."""
+    import json as _json
+    cfg = load_config()
+    ssot_path = cfg.derived_dir / dataset / "ssot" / "ssot.json"
+    if not ssot_path.is_file():
+        typer.echo(f"실패: {ssot_path} 없음 — `m3d ssot {dataset}` 먼저")
+        raise typer.Exit(code=1)
+    ssot = _json.loads(ssot_path.read_text(encoding="utf-8"))
+    spec, sources = model_rules.build_modelspec(ssot)
+    stats = model_rules.source_stats(sources)
+    path = model_io.save_modelspec(cfg, dataset, spec, sources, stats)
+    typer.echo(f"ModelSpec 저장: {path}")
+    for k, v in sources.items():
+        if not v.startswith("default:"):
+            typer.echo(f"  {k}: {v}")
+    typer.echo(f"spec_sources ssot={stats['ssot']} decision={stats['decision']} "
+               f"default={stats['default']} derived={stats['derived']}")
 
 
 if __name__ == "__main__":

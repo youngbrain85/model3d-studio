@@ -1,0 +1,94 @@
+"""ModelSpec 추출 규칙 — 표기 파서·SSOT 필드 추출·출처 통계."""
+
+from m3d.model import spec_rules as R
+from m3d.model.spec import ModelSpec, leaf_paths
+
+
+def test_parse_at_chain_and_number_and_pair():
+    assert R.parse_at_chain("9@70,000=630,000") == (9, 70000.0, 630000.0)
+    assert R.parse_at_chain("240@2,800=672,000") == (240, 2800.0, 672000.0)
+    assert R.parse_at_chain("없음") is None
+    assert R.parse_number("15,700") == 15700.0
+    assert R.parse_number("4,000/2,800") == 4000.0
+    assert R.parse_pair("450×330") == (450.0, 330.0)
+    assert R.parse_pair("250 / 330") == (250.0, 330.0)
+
+
+def test_parse_thickness_zones_symmetric_completion():
+    zones = R.parse_thickness_zones("38(0~6,300) → 26(~16,100) → 16(~53,900) → 26 → 38", total=70000)
+    assert zones == [(0.0, 6300.0, 38.0), (6300.0, 16100.0, 26.0), (16100.0, 53900.0, 16.0),
+                     (53900.0, 63700.0, 26.0), (63700.0, 70000.0, 38.0)]
+    assert R.parse_thickness_zones("38(0~6,300) → 26(~10,000)", total=70000) is None  # 사슬이 안 닫힘
+
+
+def test_zones_from_class_totals_reconstructs_symmetric_chain():
+    # SSOT C01 형태: 상판 38 총 12,600 / 26 편측 9,800 / 16 중앙 37,800
+    zones = R.zones_from_class_totals({38.0: [12600.0], 26.0: [9800.0], 16.0: [35000.0, 2800.0]}, 70000.0)
+    assert zones == [(0.0, 6300.0, 38.0), (6300.0, 16100.0, 26.0), (16100.0, 53900.0, 16.0),
+                     (53900.0, 63700.0, 26.0), (63700.0, 70000.0, 38.0)]
+    # 하판(SSOT C01): 18mm 가 총연장 12,600 과 소구간 5,600·7,000 으로 겹쳐 판독됨 → 최대값 후보로 닫힘
+    bot = R.zones_from_class_totals({38.0: [7000.0], 28.0: [9800.0], 18.0: [12600.0, 5600.0, 7000.0],
+                                     14.0: [18200.0]}, 70000.0)
+    assert bot == [(0.0, 3500.0, 38.0), (3500.0, 13300.0, 28.0), (13300.0, 25900.0, 18.0),
+                   (25900.0, 44100.0, 14.0), (44100.0, 56700.0, 18.0), (56700.0, 66500.0, 28.0),
+                   (66500.0, 70000.0, 38.0)]
+    assert R.zones_from_class_totals({38.0: [12600.0], 26.0: [4900.0], 16.0: [37800.0]}, 70000.0) is None
+
+
+def _reading(region, ord_, item, value, status="확정"):
+    return {"region": region, "ord": ord_, "page_no": 1, "item": item, "value_raw": value,
+            "unit": "mm", "status": status, "mm_bbox": [1, 2, 3, 4], "crosscheck": None}
+
+
+SSOT = {
+    "project": {"coord_system": {"datums": {"P4_bearing_z": -525.0, "P5_bearing_z": -455.0}}},
+    "readings": [
+        _reading("B", "B01", "지간구성", "9@70,000=630,000"),
+        _reading("C", "C01", "측면도 전체 형고 4,000", "4,000"),
+        _reading("C", "C12", "CU 단면 전체 높이(형고) 2,800", "2,800"),
+        _reading("C", "C01", "다이아프램 간격 240@2,800=672,000", "240@2,800=672,000"),
+        _reading("C", "C13", "CL 다이아프램 규격 DIAP 10x4500x3739", "DIAP 10x4500x3739"),
+        _reading("C", "C01", "상판 판두께 12,600(T=38mm HSB500)", "12,600(T=38mm HSB500)", "추정"),
+        _reading("C", "C01", "상판 판두께 9,800(T=26mm HSB500)", "9,800(T=26mm HSB500)", "추정"),
+        _reading("C", "C01", "상판 판두께 35,000(T=16mm HSB500) 중앙압축부", "35,000(T=16mm HSB500)", "추정"),
+        _reading("C", "C01", "상판 판두께 2,800(T=16mm HSB500) 전이구간", "2,800(T=16mm HSB500)", "추정"),
+        _reading("B", "B01", "전체 폭원", "15,700"),
+        _reading("B", "B02", "슬래브 콘크리트 두께(단면 C-C/F-F, 300 표기)", "300"),
+        _reading("B", "B02", "방호벽 하부 폭", "450"),
+        _reading("B", "B01", "방호벽 높이 구간", "250 / 330"),
+        _reading("A", "A04", "P1~P8 경간별 받침 간격(교각 상 받침 간 거리)", "3,100"),
+    ],
+    "decisions": [
+        {"item": "측면도 형고 4,000mm가 내공고인지 전강고인지", "choice_label": "내공고(웹·격벽 높이)", "provisional": False},
+        {"item": "슬래브 두께 표기 '113.2 / 127.7'의 의미(순 콘크리트 두께 vs 포장 포함)", "choice_label": "포장 포함 전체 두께", "provisional": False},
+    ],
+}
+
+
+def test_build_modelspec_fills_from_ssot_and_decisions_with_sources():
+    spec, src = R.build_modelspec(SSOT)
+    assert spec.box.h_pier == 4.0 and src["box.h_pier"].startswith("ssot:C01/")
+    assert spec.box.h_mid == 2.8 and src["box.h_mid"].startswith("ssot:C12/")
+    assert spec.diaphragm.spacing == 2.8 and spec.diaphragm.n_cell == 25
+    assert src["diaphragm.n_cell"].startswith("derived:")
+    assert spec.diaphragm.interior_t == 0.010 and dict(spec.diaphragm.h_table)[2.8] == 3.739
+    assert spec.box.top_t == [(0.0, 6.3, 0.038), (6.3, 16.1, 0.026), (16.1, 53.9, 0.016),
+                              (53.9, 63.7, 0.026), (63.7, 70.0, 0.038)]
+    assert src["box.top_t"].startswith("ssot:C01/")
+    assert src["box.bot_t"].startswith("default:SPEC_v2 §1")      # 하판 판독 없음 → 차용 표기
+    assert spec.slab.half_width == 7.85 and spec.slab.t_web == 0.30
+    assert spec.slab.barrier == (0.45, 0.33, 0.03)
+    assert spec.bearing.x == 1.55 and src["bearing.x"].startswith("ssot:A04/")
+    assert spec.box.h_is_clear is True and src["box.h_is_clear"].startswith("decision:")
+    assert spec.slab.thickness_is_net is False and src["slab.thickness_is_net"].startswith("decision:")
+    assert spec.wg.length == 4.45 and src["wg.length"] == "default:SPEC_v2 §6"
+    stats = R.source_stats(src)
+    assert stats["ssot"] >= 9 and stats["decision"] == 2 and stats["default"] > 0
+    assert sum(stats.values()) == len(src)
+    assert set(leaf_paths(spec)) <= set(src)                      # 리프 필드 전건 출처 있음
+
+
+def test_default_spec_roundtrips_json():
+    spec = ModelSpec()
+    again = ModelSpec.model_validate_json(spec.model_dump_json())
+    assert again == spec and len(leaf_paths(spec)) > 60
