@@ -153,6 +153,9 @@ def db_check() -> None:
     # 아래 한 줄은 verify-m2a.ps1 이 정규식으로 읽는다 — 형식을 바꾸지 않는다(ASCII 고정)
     typer.echo(f"crops_ready={result['crops_ready']} crop_missing={result['crop_missing']} "
                f"crops_assets={result['crops_assets']}")
+    # M2b: 결정·업로드 현황 (ASCII 고정 — 스크립트가 읽는다)
+    typer.echo(f"decisions={result['decisions_total']} provisional={result['decisions_provisional']} "
+               f"published={result['published']}/{result['crops_assets']}")
 
 
 @app.command()

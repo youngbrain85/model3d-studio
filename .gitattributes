@@ -1,0 +1,2 @@
+# 마이그레이션 sha 안정성 — SQL 은 항상 LF 로 체크아웃한다 (db.migration_sha256 도 정규화하지만 이중 방어)
+*.sql text eol=lf

@@ -5,7 +5,7 @@
 
 import pytest
 
-from m3d.db import MigrationError, discover_migrations, pending_migrations
+from m3d.db import MigrationError, discover_migrations, migration_sha256, pending_migrations
 
 
 def _write(directory, name, body):
@@ -61,3 +61,23 @@ def test_nothing_pending_when_all_applied(tmp_path):
     available = discover_migrations(tmp_path)
     applied = {m.version: m.sha256 for m in available}
     assert pending_migrations(available, applied) == []
+
+
+def test_migration_sha_ignores_line_endings(tmp_path):
+    """CRLF 체크아웃과 LF 워크트리가 같은 파일을 다른 sha 로 보면 db apply 가 오판한다."""
+    lf = _write(tmp_path, "0001_a.sql", "create table t (\n  id int\n);\n")
+    crlf = tmp_path / "0001_b.sql"
+    crlf.write_bytes(b"create table t (\r\n  id int\r\n);\r\n")
+    assert migration_sha256(lf) == migration_sha256(crlf)
+
+
+def test_pending_accepts_legacy_raw_sha_record(tmp_path):
+    """정규화 도입 전(M0·M1)에 기록된 바이트 해시도 '수정됨' 으로 오판하지 않는다."""
+    crlf = tmp_path / "0001_init.sql"
+    crlf.write_bytes(b"select 1;" + bytes([13, 10]))
+    (m,) = discover_migrations(tmp_path)
+    assert m.sha256 != m.sha256_raw
+    assert pending_migrations([m], {"0001_init": m.sha256_raw}) == []
+    assert pending_migrations([m], {"0001_init": m.sha256}) == []
+    with pytest.raises(MigrationError):
+        pending_migrations([m], {"0001_init": "0" * 64})

@@ -1,4 +1,4 @@
-// Supabase DB 타입 — supabase/migrations/0001_init.sql 미러 (설계서 §3).
+// Supabase DB 타입 — supabase/migrations/0001~0004 미러 (설계서 §3).
 // SQL 이 정본이다. 스키마를 바꾸면 이 파일도 같이 고친다.
 
 export type Json = string | number | boolean | null | { [key: string]: Json } | Json[];
@@ -105,6 +105,67 @@ export interface Database {
           created_at?: string;
         };
         Update: Partial<Database['public']['Tables']['assets']['Insert']>;
+      };
+      readings: {
+        Row: {
+          id: string;
+          project_id: string;
+          region: string;
+          item: string;
+          value_raw: string;
+          unit: string | null;
+          basis_sheet_id: string;
+          basis_page_id: string | null;
+          basis_mm_bbox: Json;
+          crosscheck: Json | null;
+          status: '확정' | '추정' | '검토지적';
+          round: number;
+          created_at: string;
+        };
+        Insert: never;
+        Update: never;
+      };
+      ambiguities: {
+        Row: {
+          id: string;
+          project_id: string;
+          item: string;
+          basis_sheet_id: string;
+          sheet_page_id: string | null;
+          mm_bbox: Json;
+          options: Json;
+          model_impact: string;
+          crop_rel_path: string | null;
+          status: '대기' | '결정' | '잠정';
+          created_at: string;
+        };
+        Insert: never;
+        Update: never;
+      };
+      decisions: {
+        Row: {
+          id: string;
+          project_id: string;
+          ambiguity_id: string;
+          choice_index: number;
+          choice_label: string;
+          provisional: boolean;
+          note: string;
+          decided_by: string;
+          decided_at: string;
+        };
+        Insert: {
+          id?: string;
+          project_id: string;
+          ambiguity_id: string;
+          choice_index: number;
+          choice_label: string;
+          provisional?: boolean;
+          note?: string;
+          decided_by?: string;
+          decided_at?: string;
+        };
+        Update: never;
       };
     };
     Views: Record<string, never>;

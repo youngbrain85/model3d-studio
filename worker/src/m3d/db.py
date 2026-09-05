@@ -6,15 +6,15 @@ supabase CLI 도 Docker 도 없으므로 psycopg 로 Session pooler 에 직접 �
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 
 import psycopg
 
 from m3d.config import Config
-from m3d.samples.manifest import sha256_file
 
-TABLES = ("projects", "sheets", "sheet_pages", "assets")
+TABLES = ("projects", "sheets", "sheet_pages", "assets", "readings", "ambiguities", "decisions")
 
 SCHEMA_MIGRATIONS_DDL = """
 create table if not exists schema_migrations (
@@ -33,26 +33,45 @@ class MigrationError(RuntimeError):
 class Migration:
     version: str
     path: Path
-    sha256: str
+    sha256: str        # 줄끝 정규화(LF) 해시 — 기록·비교의 정본
+    sha256_raw: str    # 파일 바이트 그대로의 해시 — 정규화 도입 전(M0·M1) 기록과의 호환
+
+
+def migration_sha256(path: Path) -> str:
+    """줄끝을 LF 로 정규화한 뒤 해시한다.
+
+    core.autocrlf=true 체크아웃은 같은 파일을 CRLF 로 내놓아, 임시 워크트리(LF)에서 적용한
+    마이그레이션이 메인 체크아웃에서 "사후 수정" 으로 오인됐다(2026-09-05 실측). 내용이 같으면
+    줄끝과 무관하게 같은 sha 여야 한다.
+    """
+    data = path.read_bytes().replace(b"\r\n", b"\n")
+    return hashlib.sha256(data).hexdigest()
+
+
+def _raw_sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def discover_migrations(directory: Path) -> list[Migration]:
     files = sorted(directory.glob("*.sql"))
     if not files:
         raise MigrationError(f"마이그레이션이 없습니다: {directory}")
-    return [Migration(f.stem, f, sha256_file(f)) for f in files]
+    return [Migration(f.stem, f, migration_sha256(f), _raw_sha256(f)) for f in files]
 
 
 def pending_migrations(
     available: list[Migration], applied: dict[str, str]
 ) -> list[Migration]:
-    """아직 적용되지 않은 것만 돌려준다. 적용 후 수정된 파일은 에러로 정지시킨다."""
+    """아직 적용되지 않은 것만 돌려준다. 적용 후 수정된 파일은 에러로 정지시킨다.
+
+    기록된 sha 는 정규화 해시(현재) 또는 바이트 해시(정규화 도입 전 기록) 중 하나와 맞으면 된다.
+    """
     pending: list[Migration] = []
     for migration in available:
         recorded = applied.get(migration.version)
         if recorded is None:
             pending.append(migration)
-        elif recorded != migration.sha256:
+        elif recorded not in (migration.sha256, migration.sha256_raw):
             raise MigrationError(
                 f"{migration.version} 은 이미 적용되었는데 파일이 그 뒤 수정되었습니다 "
                 f"(기록 {recorded[:12]}… / 현재 {migration.sha256[:12]}…). "
@@ -147,6 +166,13 @@ def check(cfg: Config) -> dict:
                     "and rel_path like '%%/crops/%%'")
         crops_assets = cur.fetchone()[0]
 
+        cur.execute("select count(*), count(*) filter (where provisional) from decisions")
+        decisions_total, decisions_provisional = cur.fetchone()
+
+        cur.execute("select count(*) from assets where role = 'derived' "
+                    "and rel_path like '%%/crops/%%' and storage_path is not null")
+        published = cur.fetchone()[0]
+
     return {"counts": counts, "rls": rls, "projects": projects,
             "catalog_status_counts": catalog_status_counts,
             "from_content_filled": from_content_filled,
@@ -155,4 +181,7 @@ def check(cfg: Config) -> dict:
             "ambiguity_stats": ambiguity_stats,
             "crops_ready": crops_ready,
             "crop_missing": crop_missing,
-            "crops_assets": crops_assets}
+            "crops_assets": crops_assets,
+            "decisions_total": decisions_total,
+            "decisions_provisional": decisions_provisional,
+            "published": published}
