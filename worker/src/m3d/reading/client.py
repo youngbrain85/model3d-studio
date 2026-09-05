@@ -71,7 +71,8 @@ MAX_RETRY_REASON_CHARS = 3000
 # 단계별 안내문 — 판독 전용 문구(선택지 2~4개)를 통합·검토에 붙이면 지시가 어긋난다.
 STAGE_RETRY_GUIDANCE = {
     "read": "모든 필수 필드를 채우고(page_no·mm_bbox 4개 실수·선택지 2~4개) "
-            "같은 JSON 스키마로만 답하라.",
+            "같은 JSON 스키마로만 답하라. mm_bbox 는 sheet_text 의 x_mm/y_mm 와 같은 "
+            "좌표계(용지 mm, 원점 좌하단, 용지 크기 안)로 적는다 — 이미지 픽셀 좌표가 아니다.",
     "merge": "각 항목의 ord·page_no 는 입력에 실제로 있는 시트·페이지여야 하고, "
              "mm_bbox 는 그 페이지 용지(mm) 안이어야 한다. 같은 JSON 스키마로만 답하라.",
     "review": "신규 애매성의 ord·page_no 는 통합 결과에 있는 시트·페이지여야 하고, "
