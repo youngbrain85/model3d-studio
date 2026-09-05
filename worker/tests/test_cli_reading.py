@@ -30,6 +30,9 @@ def _page(ord_: str, region: str) -> PageRef:
 def _env(tmp_path, monkeypatch):
     # load_config() 가 SAMPLE_SOURCE_DIR 만 있으면 되게 — DB·API 는 전부 monkeypatch 로 우회한다.
     monkeypatch.setenv("SAMPLE_SOURCE_DIR", str(tmp_path))
+    # cli._pages_map 이 실제 text JSON 을 읽지 않도록 — 이 파일의 PageRef 는 가짜 경로다.
+    monkeypatch.setattr(reading_sheet, "page_paper_mm",
+                        lambda cfg, dataset, page: (1000.0, 1000.0))
 
 
 def _ok_usage(model="claude-sonnet-5"):
@@ -45,7 +48,7 @@ def test_db_exception_isolated_still_prints_total_and_exits_1(monkeypatch):
                         (SheetReadOut(readings=[], ambiguities=[]), _ok_usage()))
     monkeypatch.setattr(reading_store, "has_review_rows", lambda cfg, dataset, region: False)
     monkeypatch.setattr(reading_region, "merge_region",
-                        lambda cfg, dataset, region, sheet_outs, **kw:
+                        lambda cfg, dataset, region, sheet_outs, pages, **kw:
                         (RegionMergeOut(readings=[], ambiguities=[], notes=[]), _ok_usage()))
 
     def _boom(*a, **k):

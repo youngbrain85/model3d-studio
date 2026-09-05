@@ -239,6 +239,14 @@ def _read_pages(cfg, dataset, pages, *, force, cache_only):
     return outs, total_cost, failures
 
 
+def _pages_map(cfg, dataset, pages):
+    """(ord, page_no) → 용지 크기(mm) — merge_region/review_region 의 post_validate 입력.
+
+    crops.py 가 읽는 것과 같은 text JSON 의 paper_mm 을 재사용한다(Task 6 소스 공용).
+    """
+    return {(p.ord, p.page_no): reading_sheet.page_paper_mm(cfg, dataset, p) for p in pages}
+
+
 def _save_review(cfg, dataset, region, log):
     """검토 기록 저장. 기존 파일은 UTC 타임스탬프를 붙여 보존한다(비교용)."""
     path = cfg.derived_dir / dataset / f"review-{region}.json"
@@ -286,6 +294,7 @@ def read(
         typer.echo("--sheet 지정 시 DB 반영 없음 — 계열 반영은 --region 으로 실행하세요.")
         _finish(total_cost, failures)
 
+    pages_map = _pages_map(cfg, dataset, pages)
     failed_regions = {ref[0] for ref, _ in failures}
     for reg, sheet_outs in sorted(outs.items()):
         if reg in failed_regions:
@@ -303,7 +312,7 @@ def read(
                 continue
         try:
             merged, usage = reading_region.merge_region(
-                cfg, dataset, reg, sheet_outs, force=force, cache_only=cache_only)
+                cfg, dataset, reg, sheet_outs, pages_map, force=force, cache_only=cache_only)
         except Exception as exc:
             failures.append((reg, f"{type(exc).__name__}: {exc}"))
             typer.echo(f"[{reg}] 통합 실패: {type(exc).__name__}")
@@ -349,6 +358,7 @@ def review(
 
     outs, total_cost, failures = _read_pages(cfg, dataset, pages,
                                              force=False, cache_only=cache_only)
+    pages_map = _pages_map(cfg, dataset, pages)
     failed_regions = {ref[0] for ref, _ in failures}
     for reg, sheet_outs in sorted(outs.items()):
         if reg in failed_regions:
@@ -356,9 +366,9 @@ def review(
             continue
         try:
             merged, u1 = reading_region.merge_region(
-                cfg, dataset, reg, sheet_outs, force=False, cache_only=cache_only)
+                cfg, dataset, reg, sheet_outs, pages_map, force=False, cache_only=cache_only)
             reviewed, u2 = reading_region.review_region(
-                cfg, dataset, reg, merged, force=force, cache_only=cache_only)
+                cfg, dataset, reg, merged, pages_map, force=force, cache_only=cache_only)
         except Exception as exc:
             failures.append((reg, f"{type(exc).__name__}: {exc}"))
             typer.echo(f"[{reg}] 검토 실패: {type(exc).__name__}")

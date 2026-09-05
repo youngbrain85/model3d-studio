@@ -64,6 +64,17 @@ def list_pages(cfg: Config, dataset: str, region: str | None = None,
     return pages
 
 
+def page_paper_mm(cfg: Config, dataset: str, page: PageRef) -> tuple[float, float]:
+    """페이지의 용지 크기(mm) — text JSON 의 paper_mm 재사용 (crops.py 와 같은 소스).
+
+    merge_region/review_region 의 post_validate 가 (ord,page_no)·mm_bbox 를 용지
+    범위 안인지 검증하는 데 쓴다(cli.py 가 list_pages 결과로 이 맵을 만들어 넘긴다).
+    """
+    meta = json.loads(page.text.read_text(encoding="utf-8"))
+    w, h = meta["paper_mm"]
+    return float(w), float(h)
+
+
 def _build_messages(cfg: Config, dataset: str, page: PageRef) -> tuple[list[dict], dict]:
     """user 메시지와 캐시 키에 넣을 입력 지문을 함께 만든다."""
     work = cfg.derived_dir / dataset / "llm-input"
