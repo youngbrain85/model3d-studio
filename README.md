@@ -79,3 +79,17 @@ powershell -ExecutionPolicy Bypass -File scripts\verify-m2a.ps1
   worker 전용 — 웹 번들·커밋 금지. 값 목록은 `.env.example` 참고.
 - `m3d read` · `m3d review` 의 전제는 두 값(`ANTHROPIC_API_KEY`·`ANTHROPIC_WORKSPACE_ID`)이 채워진 `.env` 다.
 - 검증 없이 완료를 주장하지 않는다. 실패는 출력과 함께 실패로 보고한다.
+
+## 질문 카드 (M2b)
+
+판독이 끝난 뒤 애매성을 웹에서 답하고, 결정을 포함한 치수 정본을 만든다. 아래는 모두 **Anthropic API 비용 없음**.
+
+```powershell
+$env:PYTHONUTF8='1'
+.\worker\.venv\Scripts\m3d.exe publish ab1-p4p5   # 크롭 PNG → 비공개 Storage 버킷 crops (SUPABASE_URL·SUPABASE_SERVICE_KEY 필요)
+.\worker\.venv\Scripts\m3d.exe ssot ab1-p4p5      # data/derived/ab1-p4p5/ssot/실측정리_v<N>.md + ssot.json (내용이 바뀔 때만 버전 증가)
+cd web; npm run dev                                   # http://localhost:5173 — Supabase 대시보드(Authentication → Users)에서 만든 계정으로 로그인
+```
+
+카드: 숫자키 `1`~`4` 선택, `0` 모르겠다(권장안을 잠정 채택), `Enter` 결정, `←`/`→` 이동. 결정은 `decisions` 에 이력으로 쌓이고
+`ambiguities.status` 가 결정/잠정으로 바뀐다. 재판독(`read`/`review`)은 결정이 달린 애매성을 보존한다.
