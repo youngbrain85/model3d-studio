@@ -140,7 +140,7 @@ def test_ambiguities_deleted_even_when_new_result_is_empty(cfg, monkeypatch):
     assert len(dels) == 1
     assert sorted(dels[0][1][1]) == ["s-b01", "s-b02"]     # 계열 시트 전체가 대상
     assert db.inserted_a == [] and db.committed is True
-    assert res == {"readings": 0, "ambiguities": 0, "kept": 0, "failed": 0}
+    assert res == {"readings": 0, "ambiguities": 0, "kept": 0, "failed": 0, "failed_rows": []}
 
 
 def test_same_natural_key_keeps_id_and_crop_path(cfg, monkeypatch):
@@ -176,7 +176,7 @@ def test_replace_region_inserts_readings_with_region_and_round(cfg, monkeypatch)
     _patch(monkeypatch, db)
     rows_r, _rows_a = build_rows("B", [_r("두께", ord_="B01")], [], round_no=2)
     res = store.replace_region(cfg, "ds", "B", rows_r, [])
-    assert res == {"readings": 1, "ambiguities": 0, "kept": 0, "failed": 0}
+    assert res == {"readings": 1, "ambiguities": 0, "kept": 0, "failed": 0, "failed_rows": []}
     assert len(db.inserted_r) == 1
     params = db.inserted_r[0]
     # insert into readings (project_id, region, item, value_raw, unit,
@@ -191,5 +191,31 @@ def test_replace_region_counts_unresolved_ord_as_failed(cfg, monkeypatch):
     rows_r, rows_a = build_rows(
         "B", [_r("두께", ord_="Z99")], [_a("해석", ord_="Z99")], round_no=2)
     res = store.replace_region(cfg, "ds", "B", rows_r, rows_a)
-    assert res == {"readings": 0, "ambiguities": 0, "kept": 0, "failed": 2}
+    assert (res["readings"], res["ambiguities"], res["kept"], res["failed"]) == (0, 0, 0, 2)
+    assert [row["ord"] for row in res["failed_rows"]] == ["Z99", "Z99"]
     assert db.inserted_r == [] and db.inserted_a == []
+
+
+def test_replace_region_reports_which_rows_failed_and_why(cfg, monkeypatch, caplog):
+    """acceptance §4 — FK 를 못 푼 행은 미해석 N 숫자로만 사라지면 안 된다. 어느 행이
+    왜(시트 없음 / 페이지 없음) 버려졌는지 결과와 경고 로그에 남긴다."""
+    import logging
+
+    db = FakeDb()
+    _patch(monkeypatch, db)
+    rows_r, rows_a = build_rows(
+        "B", [_r("두께", ord_="Z99")],                    # 시트 자체가 없음
+        [_a("경간구성 표기 차이", ord_="B01", page_no=2)],  # B01 은 p1 만 존재
+        round_no=2)
+
+    with caplog.at_level(logging.WARNING, logger="m3d.reading.store"):
+        res = store.replace_region(cfg, "ds", "B", rows_r, rows_a)
+
+    assert res["failed"] == 2
+    assert res["failed_rows"] == [
+        {"kind": "reading", "item": "두께", "ord": "Z99", "page_no": 1,
+         "reason": "시트 ord 없음"},
+        {"kind": "ambiguity", "item": "경간구성 표기 차이", "ord": "B01", "page_no": 2,
+         "reason": "페이지 없음"},
+    ]
+    assert "Z99" in caplog.text and "B01 p2" in caplog.text

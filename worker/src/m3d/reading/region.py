@@ -207,6 +207,11 @@ def apply_findings(readings: list[MergedReading], ambiguities: list[MergedAmbigu
     "P3 희생관 연장"은 어순 때문에 놓치는 문제)의 재발 방지(acceptance §3 F계열
     사례). 1토큰 item(예: "두께")은 오매칭 위험이 커 폴백에서 제외한다. 그래도
     0건이면 기존대로 대상 없음으로 남긴다.
+
+    기록 행의 `resolution` 은 반영·기각·미종결 셋 중 하나다. 미종결(대상 없음)은
+    설계서 §8 ⑥("전건이 반영 또는 사유付 기각으로 종결") 위반이므로 기각과 같은
+    applied=False 로 뭉개지 않고 구분해 남긴다 — CLI 가 이 값으로 드러낸다
+    (acceptance §3: F 계열 미종결 2건이 출력에 보이지 않았다).
     """
     finals = [FinalReading.model_validate(r.model_dump()) for r in readings]
     ambs = list(ambiguities)
@@ -214,8 +219,9 @@ def apply_findings(readings: list[MergedReading], ambiguities: list[MergedAmbigu
 
     for f in findings:
         entry = {"target_item": f.target_item, "verdict": f.verdict,
-                 "reason": f.reason, "applied": False, "note": ""}
+                 "reason": f.reason, "applied": False, "note": "", "resolution": "미종결"}
         if f.verdict == "기각":
+            entry["resolution"] = "기각"
             log_rows.append(entry)
             continue
         if f.verdict == "상태변경":
@@ -245,6 +251,8 @@ def apply_findings(readings: list[MergedReading], ambiguities: list[MergedAmbigu
         elif f.verdict == "신규애매성":
             ambs.append(f.new_ambiguity)
             entry["applied"] = True
+        if entry["applied"]:
+            entry["resolution"] = "반영"
         log_rows.append(entry)
 
     return finals, ambs, log_rows

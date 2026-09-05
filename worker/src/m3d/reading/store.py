@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 
 import psycopg
 
 from m3d.config import Config
 from m3d.models import AmbiguityRow, ReadingRow
+
+log = logging.getLogger(__name__)
 
 
 def build_rows(region: str, readings, ambiguities, round_no: int
@@ -69,14 +72,28 @@ def has_review_rows(cfg: Config, dataset: str, region: str) -> bool:
         return cur.fetchone() is not None
 
 
+def _failed_row(kind: str, item: str, ord_: str, page_no: int, sheet_found: bool) -> dict:
+    """FK 를 못 푼 행 1건의 기록 — 어느 행이 왜 빠졌는지 결과와 경고 로그 양쪽에 남긴다.
+
+    acceptance §4: A03 p2 를 근거로 댄 ambiguity 가 여기서 조용히 버려져 '미해석 1' 이라는
+    숫자로만 보였다. 상류(region.page_and_bbox_violations)가 먼저 막지만, 마지막 안전망이
+    삼킨 행도 정체를 말해야 한다.
+    """
+    reason = "페이지 없음" if sheet_found else "시트 ord 없음"
+    log.warning("FK 미해석으로 제외: %s %s p%s %r — %s", kind, ord_, page_no, item, reason)
+    return {"kind": kind, "item": item, "ord": ord_, "page_no": page_no, "reason": reason}
+
+
 def replace_region(cfg: Config, dataset: str, region: str,
-                   rows_r: list[ReadingRow], rows_a: list[AmbiguityRow]) -> dict[str, int]:
+                   rows_r: list[ReadingRow], rows_a: list[AmbiguityRow]) -> dict:
     """해당 계열의 기존 행을 지우고 새로 넣는다 — 재실행이 누적되지 않게.
 
     ambiguity 는 자연키가 같으면 옛 id·crop_rel_path 를 이어받는다(크롭 링크 보존).
-    시트·페이지 id 를 해석하지 못한 행은 NULL 로 밀어넣지 않고 failed 로 센다.
+    시트·페이지 id 를 해석하지 못한 행은 NULL 로 밀어넣지 않고 failed 로 세되,
+    어느 행이 왜 빠졌는지 `failed_rows` 와 경고 로그에 남긴다(`_failed_row`).
     """
     kept = failed = 0
+    failed_rows: list[dict] = []
     with psycopg.connect(cfg.require_db_url()) as conn:
         with conn.cursor() as cur:
             project_id = _project_id(cur, dataset)
@@ -108,6 +125,8 @@ def replace_region(cfg: Config, dataset: str, region: str,
                 pid = page_ids.get((r.basis_ord, r.basis_page_no))
                 if sid is None or pid is None:
                     failed += 1
+                    failed_rows.append(_failed_row("reading", r.item, r.basis_ord,
+                                                   r.basis_page_no, sid is not None))
                     continue
                 cur.execute(
                     "insert into readings (project_id, region, item, value_raw, unit, "
@@ -125,6 +144,8 @@ def replace_region(cfg: Config, dataset: str, region: str,
                 pid = page_ids.get((a.basis_ord, a.basis_page_no))
                 if sid is None or pid is None:
                     failed += 1
+                    failed_rows.append(_failed_row("ambiguity", a.item, a.basis_ord,
+                                                   a.basis_page_no, sid is not None))
                     continue
                 old = keep.get(_natural_key(sid, pid, a.item, a.mm_bbox))
                 if old is not None:
@@ -142,4 +163,5 @@ def replace_region(cfg: Config, dataset: str, region: str,
                 n_a += 1
         conn.commit()
 
-    return {"readings": n_r, "ambiguities": n_a, "kept": kept, "failed": failed}
+    return {"readings": n_r, "ambiguities": n_a, "kept": kept, "failed": failed,
+            "failed_rows": failed_rows}

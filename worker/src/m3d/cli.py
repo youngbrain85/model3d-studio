@@ -259,6 +259,17 @@ def _save_review(cfg, dataset, region, log):
     return path
 
 
+def _echo_failed_rows(reg: str, res: dict) -> None:
+    """replace_region 이 FK 를 못 풀어 버린 행을 한 줄씩 드러낸다.
+
+    acceptance §4: A03 p2 ambiguity 유실이 '미해석 1' 숫자로만 보여 크롭·질문 단계까지
+    아무도 몰랐다. 숫자 옆에 어느 행이 왜 빠졌는지를 같이 낸다.
+    """
+    for row in res.get("failed_rows", []):
+        typer.echo(f"  [{reg}] 미해석 {row['kind']} {row['ord']} p{row['page_no']} "
+                   f"{row['item']!r}: {row['reason']}")
+
+
 def _validated_region(region: str | None) -> str | None:
     """계열 키는 ord 첫 글자 한 글자다(A~F) — 접두 필터가 아니다.
 
@@ -344,6 +355,7 @@ def read(
         typer.echo(f"[{reg}] DB 반영 readings {res['readings']} / "
                    f"ambiguities {res['ambiguities']} / id 보존 {res['kept']} / "
                    f"미해석 {res['failed']}")
+        _echo_failed_rows(reg, res)
 
     _finish(total_cost, failures)
 
@@ -401,10 +413,18 @@ def review(
             failures.append((f"{reg}:db", f"{type(exc).__name__}: {exc}"))
             typer.echo(f"[{reg}] DB 반영 실패: {type(exc).__name__}")
             continue
+        # 종결 상태별 집계 — 미종결(대상 없음)은 설계서 §8 ⑥ 위반이라 기각과 따로 센다
+        # (acceptance §3: '반영 N' 만 보여서 F 계열 미종결 2건이 출력에 드러나지 않았다).
         applied = sum(1 for e in log if e["applied"])
-        typer.echo(f"[{reg}] 지적 {len(log)}건(반영 {applied}) → readings {res['readings']} / "
+        rejected = sum(1 for e in log if e.get("resolution") == "기각")
+        unresolved = [e for e in log if e.get("resolution") == "미종결"]
+        typer.echo(f"[{reg}] 지적 {len(log)}건(반영 {applied}, 기각 {rejected}, "
+                   f"미종결 {len(unresolved)}) → readings {res['readings']} / "
                    f"ambiguities {res['ambiguities']} / id 보존 {res['kept']} / "
                    f"미해석 {res['failed']}  기록: {path.name}")
+        for e in unresolved:
+            typer.echo(f"  [{reg}] 미종결 {e['target_item']!r}: {e.get('note', '')}")
+        _echo_failed_rows(reg, res)
 
     _finish(total_cost, failures)
 

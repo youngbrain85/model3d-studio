@@ -354,3 +354,88 @@ def test_merge_cache_only_raises_cache_miss_when_cached_output_invalid(cfg):
     with pytest.raises(CacheMissError):
         merge_region(cfg, "ds", "B", sheet_outs, pages_v2, client=FakeClient([]),
                      cache_only=True)
+
+
+# --------------------------------------------- acceptance §4 재현 — (ord, page_no) 쌍 검증
+
+
+def test_merge_rejects_ambiguity_page_no_that_exists_only_for_another_ord(cfg):
+    """acceptance §4 실측 형태 그대로 — A03 은 p1 만 있는데 통합 LLM 이 ambiguity 근거로
+    A03 p2 를 댔다(p2 는 A01 에만 존재). ord 집합·page_no 집합을 따로 보면 둘 다
+    아는 값이라 통과하므로 반드시 (ord, page_no) 쌍으로 반려·재시도해야 한다."""
+    sheet_outs = [("A01", SheetReadOut(readings=[], ambiguities=[])),
+                  ("A03", SheetReadOut(readings=[], ambiguities=[]))]
+    pages = {("A01", 1): PAPER, ("A01", 2): PAPER, ("A03", 1): PAPER}
+    bad = _merge_json_full(ambiguities=[
+        _ambiguity_dict(item="경간구성 표기 방식 차이", ord_="A03", page_no=2)])
+    good = _merge_json_full(ambiguities=[
+        _ambiguity_dict(item="경간구성 표기 방식 차이", ord_="A03", page_no=1)])
+    client = FakeClient([bad, good])
+
+    out, usage = merge_region(cfg, "ds", "A", sheet_outs, pages, client=client)
+
+    assert client.messages.calls == 2
+    assert usage["retried"] is True
+    assert [(a.ord, a.page_no) for a in out.ambiguities] == [("A03", 1)]
+    note = client.messages.sent[1]["messages"][-1]["content"][-1]["text"]
+    assert "A03 p2" in note
+
+
+def test_review_rejects_new_ambiguity_page_no_that_exists_only_for_another_ord(cfg):
+    """review 의 new_ambiguity 도 (ord, page_no) 쌍으로 본다 — 다른 시트의 페이지
+    번호를 빌려 오면 반려·재시도."""
+    merged = RegionMergeOut(readings=[_r("두께", ord_="A03")], ambiguities=[], notes=[])
+    pages = {("A01", 1): PAPER, ("A01", 2): PAPER, ("A03", 1): PAPER}
+    bad_finding = {"target_item": "두께", "verdict": "신규애매성", "reason": "상충",
+                   "new_status": None,
+                   "new_ambiguity": _ambiguity_dict(ord_="A03", page_no=2)}
+    good_finding = {**bad_finding, "new_ambiguity": _ambiguity_dict(ord_="A03", page_no=1)}
+    client = FakeClient([json.dumps({"findings": [bad_finding]}, ensure_ascii=False),
+                         json.dumps({"findings": [good_finding]}, ensure_ascii=False)])
+
+    out, usage = review_region(cfg, "ds", "A", merged, pages, client=client)
+
+    assert client.messages.calls == 2
+    assert usage["retried"] is True
+    amb = out.findings[0].new_ambiguity
+    assert (amb.ord, amb.page_no) == ("A03", 1)
+
+
+# --------------------------------------------- acceptance §3 — 미종결은 기각과 구분되는 상태
+
+
+def test_apply_findings_marks_resolution_for_each_finding():
+    """기록 행마다 종결 상태를 명시한다 — 반영·기각·미종결(대상 없음). 설계서 §8 ⑥
+    전건이 반영 또는 사유付 기각으로 종결 은 이 필드로만 기계적으로 판정할 수 있다."""
+    _f, _a2, log = apply_findings(
+        [_r("두께"), _r("폭")], [],
+        [ReviewFinding(target_item="두께", verdict="기각", reason="정합"),
+         ReviewFinding(target_item="폭", verdict="상태변경", reason="단일 소스",
+                       new_status="추정"),
+         ReviewFinding(target_item="없는항목", verdict="상태변경", reason="x",
+                       new_status="추정"),
+         ReviewFinding(target_item="두께", verdict="신규애매성", reason="상충",
+                       new_ambiguity=_a("신규"))])
+
+    assert [e["resolution"] for e in log] == ["기각", "반영", "미종결", "반영"]
+
+
+def test_apply_findings_f_bearing_type_composite_label_is_unresolved_not_rejected():
+    """acceptance §3 F 계열 실측 잔존 1건 — item 토큰 NO.1 이 target 에 없어 토큰
+    부분집합으로도 못 잡는 합성 라벨. 조용히 넘기지 않고 기각과 구분되는 미종결 로
+    남긴다(항목 상태는 그대로)."""
+    readings = [_r("P1 받침 NO.1 종류", ord_="F01"), _r("P4 받침 NO.1 종류", ord_="F01"),
+                _r("P7 받침 NO.1 종류", ord_="F01"), _r("P8 받침 NO.1 종류", ord_="F01"),
+                _r("P1 받침 NO.1 A/B", ord_="F01")]
+    target = "받침 종류(P1/P4/P7/P8) 및 A/B(825/825, 845/845)"
+
+    finals, _amb, log = apply_findings(
+        readings, [],
+        [ReviewFinding(target_item="P1 받침 NO.1 종류", verdict="기각", reason="정합"),
+         ReviewFinding(target_item=target, verdict="상태변경", reason="과신",
+                       new_status="추정")])
+
+    assert all(r.status == "확정" for r in finals)
+    assert log[0]["resolution"] == "기각" and log[0]["applied"] is False
+    assert log[1]["resolution"] == "미종결" and log[1]["applied"] is False
+    assert "대상 없음" in log[1]["note"]

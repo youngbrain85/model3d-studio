@@ -188,7 +188,8 @@ def test_review_applies_findings_then_writes_rows_and_log(monkeypatch):
     assert order[3] == ("build", "B", True, True, 3)
     assert order[4] == ("replace", "B", ["row-r"], ["row-a"])
     assert order[5] == ("save", "B", True)
-    assert "지적 2건(반영 1)" in result.output and "review-B.json" in result.output
+    assert "지적 2건(반영 1, 기각 0, 미종결 0)" in result.output
+    assert "review-B.json" in result.output
 
 
 def test_review_db_exception_isolated_still_prints_total_and_exits_1(monkeypatch):
@@ -259,3 +260,63 @@ def test_read_force_overwrites_review_rows(monkeypatch):
     assert result.exit_code == 0, result.output
     assert db_calls == ["B"]
     assert "검토 결과 보존" not in result.output
+
+
+# ------------------------------------------- acceptance §3·§4: 조용한 유실을 출력에 드러낸다
+
+
+def test_review_summary_counts_rejected_and_unresolved_and_names_unresolved(monkeypatch):
+    """[acceptance §3] 지적 N건(반영 M) 만으로는 기각과 미종결(대상 없음)이 구분되지
+    않아 F 계열 미종결 2건이 CLI 출력에 드러나지 않았다. 종결 상태별 수와 미종결
+    대상명을 출력한다."""
+    _one_page_b01(monkeypatch)
+    log = [
+        {"target_item": "두께", "verdict": "상태변경", "reason": "r", "applied": True,
+         "note": "", "resolution": "반영"},
+        {"target_item": "폭", "verdict": "기각", "reason": "r", "applied": False,
+         "note": "", "resolution": "기각"},
+        {"target_item": "받침 종류(P1/P4/P7/P8) 및 A/B(825/825, 845/845)",
+         "verdict": "상태변경", "reason": "r", "applied": False,
+         "note": "대상 없음 — 항목명이 통합 결과와 다르다", "resolution": "미종결"},
+    ]
+    monkeypatch.setattr(reading_region, "merge_region",
+                        lambda cfg, dataset, region, sheet_outs, pages, **kw:
+                        (RegionMergeOut(readings=[], ambiguities=[], notes=[]), _ok_usage()))
+    monkeypatch.setattr(reading_region, "review_region",
+                        lambda cfg, dataset, region, merged, pages, **kw:
+                        (ReviewOut(findings=[]), _ok_usage("claude-fable-5")))
+    monkeypatch.setattr(reading_region, "apply_findings",
+                        lambda readings, ambiguities, findings: ([], [], log))
+    monkeypatch.setattr(reading_store, "replace_region",
+                        lambda cfg, dataset, region, rows_r, rows_a:
+                        {"readings": 0, "ambiguities": 0, "kept": 0, "failed": 0,
+                         "failed_rows": []})
+    monkeypatch.setattr(cli_mod, "_save_review", lambda *a, **k: Path("review-B.json"))
+
+    result = runner.invoke(app, ["review", "ds", "--region", "B", "--cache-only"])
+
+    assert result.exit_code == 0, result.output
+    assert "지적 3건(반영 1, 기각 1, 미종결 1)" in result.output
+    assert "받침 종류(P1/P4/P7/P8) 및 A/B(825/825, 845/845)" in result.output
+
+
+def test_read_prints_each_unresolved_fk_row_with_reason(monkeypatch):
+    """[acceptance §4] replace_region 이 버린 행(A03 p2 ambiguity 유실 사례)은
+    미해석 1 숫자만이 아니라 어느 행이 왜 버려졌는지 줄로 나온다."""
+    _one_page_b01(monkeypatch)
+    monkeypatch.setattr(reading_store, "has_review_rows", lambda cfg, dataset, region: False)
+    monkeypatch.setattr(reading_region, "merge_region",
+                        lambda cfg, dataset, region, sheet_outs, pages, **kw:
+                        (RegionMergeOut(readings=[], ambiguities=[], notes=[]), _ok_usage()))
+    monkeypatch.setattr(reading_store, "replace_region",
+                        lambda cfg, dataset, region, rows_r, rows_a:
+                        {"readings": 5, "ambiguities": 2, "kept": 0, "failed": 1,
+                         "failed_rows": [{"kind": "ambiguity", "item": "경간구성 표기 방식 차이",
+                                          "ord": "A03", "page_no": 2, "reason": "페이지 없음"}]})
+
+    result = runner.invoke(app, ["read", "ds", "--region", "B"])
+
+    assert result.exit_code == 0, result.output
+    assert "미해석 1" in result.output
+    assert "A03 p2" in result.output and "페이지 없음" in result.output
+    assert "경간구성 표기 방식 차이" in result.output
