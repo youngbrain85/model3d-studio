@@ -23,6 +23,7 @@ export function Model() {
   const [error, setError] = useState<string | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const viewerRef = useRef<Viewer | null>(null);
+  const loadedBuildRef = useRef<string | null>(null);      // 같은 빌드 이중 로드 방지(StrictMode 이중 fetch)
 
   const build = useMemo(() => builds?.find((b) => b.id === buildId) ?? null, [builds, buildId]);
 
@@ -44,10 +45,13 @@ export function Model() {
   // 빌드가 바뀌면 섹션 로드(프로그레시브) — 뷰어는 캔버스가 마운트된 뒤 처음 필요할 때 만든다
   const loadBuild = useCallback(async (b: BuildRow) => {
     if (supabase === null || !canvasRef.current) return;
+    if (loadedBuildRef.current === b.id) return;
+    loadedBuildRef.current = b.id;
     if (!viewerRef.current) {
       const v = createViewer(canvasRef.current);
       v.onPick((info) => { setPicked(info); v.highlight(info?.node ?? null); });
       viewerRef.current = v;
+      if (import.meta.env.DEV) (window as unknown as { __m3dViewer?: Viewer }).__m3dViewer = v;   // 브라우저 E2E 진단용
     }
     const viewer = viewerRef.current;
     const secs = await fetchSections(supabase, b.id);
@@ -64,7 +68,7 @@ export function Model() {
     }
   }, []);
   useEffect(() => { if (build) void loadBuild(build); }, [build, loadBuild]);
-  useEffect(() => () => { viewerRef.current?.dispose(); viewerRef.current = null; }, []);
+  useEffect(() => () => { viewerRef.current?.dispose(); viewerRef.current = null; loadedBuildRef.current = null; }, []);
 
   if (error) return <Alert m="xl" color="red">{error}</Alert>;
   if (!project || !builds) return <Loader m="xl" />;
@@ -81,7 +85,10 @@ export function Model() {
           <Select size="xs" label="빌드" value={buildId} onChange={setBuildId}
             data={builds.map((b) => ({ value: b.id, label: `b${b.version} · ${b.kind} · ${b.stats.meshes} 메시 · ${b.status}` }))} />
           {build && (
-            <Text size="xs" c="dimmed">구간 {build.segment} · 결합본 <Badge size="xs" color={statusColor(build.status)}>{build.status}</Badge></Text>
+            <Group gap={6}>
+              <Text size="xs" c="dimmed">구간 {build.segment} · 결합본</Text>
+              <Badge size="xs" color={statusColor(build.status)}>{build.status}</Badge>
+            </Group>
           )}
           <ScrollArea style={{ flex: 1 }}>
             <Stack gap={4}>

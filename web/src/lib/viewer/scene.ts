@@ -16,6 +16,11 @@ export interface Viewer {
   highlight(node: string | null): void;
   onPick(cb: (info: PickInfo | null) => void): void;
   bounds(): { min: Vec3; max: Vec3 } | null;
+  /** 진단: 섹션별 표시 상태·메시 수 */
+  state(): {
+    sections: Record<string, { visible: boolean; meshes: number }>; solo: string | null; planes: string[];
+    frames: number; disposed: boolean; dirty: boolean;
+  };
   dispose(): void;
 }
 
@@ -87,11 +92,13 @@ export function createViewer(canvas: HTMLCanvasElement): Viewer {
   ro.observe(canvas);
   resize();
 
+  let frames = 0;
   function frame() {
     if (disposed) return;
     requestAnimationFrame(frame);
     if (!dirty) return;
     dirty = false;
+    frames += 1;
     renderer.render(scene, camera);
   }
   frame();
@@ -134,6 +141,11 @@ export function createViewer(canvas: HTMLCanvasElement): Viewer {
       const group = new THREE.Group();
       group.name = key;
       group.add(gltf.scene);
+      const old = sections.get(key);          // 같은 키 재로드(빌드 전환·StrictMode 이중 실행) — 옛 그룹은 씬에서 제거
+      if (old) {
+        scene.remove(old);
+        old.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh) { m.geometry.dispose(); (m.material as THREE.Material).dispose(); } });
+      }
       sections.set(key, group);
       if (!visible.has(key)) visible.set(key, true);
       scene.add(group);
@@ -166,6 +178,15 @@ export function createViewer(canvas: HTMLCanvasElement): Viewer {
     },
     onPick(cb) { pickCb = cb; },
     bounds,
+    state() {
+      const out: Record<string, { visible: boolean; meshes: number }> = {};
+      for (const [key, g] of sections) {
+        let n = 0;
+        g.traverse((o) => { if ((o as THREE.Mesh).isMesh) n += 1; });
+        out[key] = { visible: g.visible, meshes: n };
+      }
+      return { sections: out, solo: soloKey, planes: (['x', 'z'] as Axis[]).filter((a) => planes[a] !== null), frames, disposed, dirty };
+    },
     dispose() {
       disposed = true;
       ro.disconnect();
