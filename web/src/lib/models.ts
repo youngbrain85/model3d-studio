@@ -13,12 +13,12 @@ export const CODES = ['BOX', 'DIA', 'FRM', 'RIB', 'HST', 'WG', 'CS', 'SLAB', 'SP
 export const BUILD_TARGET = 'BUILD';
 
 export interface BuildRow {
-  id: string; version: number; kind: 'pilot' | 'full'; segment: string; glb_path: string;
+  id: string; version: number; kind: 'pilot' | 'full' | 'agent'; segment: string; glb_path: string;
   files: BuildFiles; stats: BuildStats; status: Status; git_sha: string | null; created_at: string;
 }
 export interface SectionRow {
   id: string; section_key: string; code: string; label: string; glb_path: string; bytes: number;
-  meshes: number; triangles: number; selfcheck: SectionSelfcheck; status: Status;
+  meshes: number; triangles: number; selfcheck: SectionSelfcheck; status: Status; source: 'builder' | 'agent';
 }
 export interface ApprovalRow {
   id: string; build_id: string; section_id: string | null; user_id: string; verdict: Verdict; note: string; created_at: string;
@@ -57,7 +57,7 @@ export function approvalPayload(p: {
 }
 
 const BUILD_COLS = 'id,version,kind,segment,glb_path,files,stats,status,git_sha,created_at';
-const SECTION_COLS = 'id,section_key,code,label,glb_path,bytes,meshes,triangles,selfcheck,status';
+const SECTION_COLS = 'id,section_key,code,label,glb_path,bytes,meshes,triangles,selfcheck,status,source';
 const APPROVAL_COLS = 'id,build_id,section_id,user_id,verdict,note,created_at';
 
 export async function fetchBuilds(client: Client, project: ProjectRef): Promise<BuildRow[]> {

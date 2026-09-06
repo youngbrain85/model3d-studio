@@ -1,11 +1,14 @@
-// 3D 검수 화면 — 좌: 빌드·섹션 트리 / 중: three.js 캔버스 + 툴바(프리셋·단면 클리핑·선택) / 우: 검증·승인 패널 (M4 설계서 §6)
+// 3D 검수 화면 — 좌: 빌드·섹션 트리(LLM 으로 만들기) / 중: three.js 캔버스 + 툴바 / 우: 잡 패널 + 검증·승인 패널 (M4 §6, M5 §6)
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
-  Alert, Anchor, Badge, Box, Button, Checkbox, Group, Loader, Paper, ScrollArea, SegmentedControl, Select, Slider, Stack, Switch, Text, Title,
+  Alert, Anchor, Badge, Box, Button, Checkbox, Group, Loader, Modal, Paper, ScrollArea, SegmentedControl, Select, Slider, Stack, Switch,
+  Text, Textarea, Title,
 } from '@mantine/core';
 
+import { JobPanel } from '../components/JobPanel';
 import { VerifyPanel } from '../components/VerifyPanel';
+import { AGENT_SECTIONS, createJob, fetchEvents, fetchJobs, isActive, jobPayload, type JobEventRow, type JobRow } from '../lib/jobs';
 import {
   fetchApprovals, fetchBuilds, fetchJson, fetchSections, signedUrls,
   type ApprovalRow, type BuildRow, type SectionRow,
@@ -20,6 +23,7 @@ const PRESETS: { value: Preset; label: string }[] = [
   { value: 'iso', label: '아이소' }, { value: 'side', label: '측면' }, { value: 'front', label: '정면' }, { value: 'bottom', label: '저면' },
 ];
 const KEEPS = [{ value: 'below', label: '이전 유지' }, { value: 'above', label: '이후 유지' }];
+const POLL_MS = 2000;
 const shortName = (key: string) => key.split('/').slice(-2).join('/');
 
 export function Model() {
@@ -40,6 +44,11 @@ export function Model() {
   const [zP4, setZP4] = useState(-525);
   const [clipZ, setClipZ] = useState<{ enabled: boolean; d: number; keep: Keep }>({ enabled: false, d: 35, keep: 'below' });
   const [clipX, setClipX] = useState<{ enabled: boolean; x: number; keep: Keep }>({ enabled: false, x: 0, keep: 'below' });
+  const [jobs, setJobs] = useState<JobRow[]>([]);
+  const [events, setEvents] = useState<Record<string, JobEventRow[]>>({});
+  const [openJob, setOpenJob] = useState<string | null>(null);
+  const [askSection, setAskSection] = useState<SectionRow | null>(null);
+  const [askRequest, setAskRequest] = useState('');
   const [error, setError] = useState<string | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const viewerRef = useRef<Viewer | null>(null);
@@ -47,6 +56,7 @@ export function Model() {
 
   const build = useMemo(() => builds?.find((b) => b.id === buildId) ?? null, [builds, buildId]);
   const selected = useMemo(() => sections.find((s) => s.section_key === selectedKey) ?? null, [sections, selectedKey]);
+  const buildJob = useMemo(() => (build ? jobs.find((j) => j.build_id === build.id) ?? null : null), [jobs, build]);
 
   useEffect(() => {
     if (supabase === null) return;
@@ -54,9 +64,10 @@ export function Model() {
       try {
         const p = await fetchProject(supabase, slug);
         setProject(p);
-        const bs = await fetchBuilds(supabase, p);
+        const [bs, js] = await Promise.all([fetchBuilds(supabase, p), fetchJobs(supabase, p.id)]);
         setBuilds(bs);
         setBuildId(bs[0]?.id ?? null);
+        setJobs(js);
       } catch (e) {
         setError((e as Error).message);
       }
@@ -86,7 +97,7 @@ export function Model() {
     setVisible(Object.fromEntries(secs.map((s) => [s.section_key, true])));
     fetchApprovals(supabase, b.id).then(setApprovals).catch((e: Error) => setError(e.message));
 
-    const fileKeys = [b.glb_path, ...b.files.json, ...secs.map((s) => s.glb_path)];
+    const fileKeys = [b.glb_path, ...b.files.json, ...(b.files.agent ?? []), ...secs.map((s) => s.glb_path)];
     const { urls, failed } = await signedUrls(supabase, [...secs.map((s) => s.glb_path), ...b.files.renders, ...fileKeys]);
     setRenderUrls(new Map(b.files.renders.flatMap((k) => (urls.has(k) ? [[k.split('/').pop() ?? k, urls.get(k)!] as [string, string]] : []))));
     setDownloadUrls(new Map(fileKeys.flatMap((k) => (urls.has(k) ? [[shortName(k), urls.get(k)!] as [string, string]] : []))));
@@ -105,9 +116,51 @@ export function Model() {
   useEffect(() => { if (build) void loadBuild(build); }, [build, loadBuild]);
   useEffect(() => () => { viewerRef.current?.dispose(); viewerRef.current = null; loadedBuildRef.current = null; }, []);
 
-  // 클리핑·프리셋 → 뷰어
+  // 클리핑 → 뷰어
   useEffect(() => { viewerRef.current?.setClip('z', { enabled: clipZ.enabled, value: zFromDistance(zP4, clipZ.d), keep: clipZ.keep }); }, [clipZ, zP4]);
   useEffect(() => { viewerRef.current?.setClip('x', { enabled: clipX.enabled, value: clipX.x, keep: clipX.keep }); }, [clipX]);
+
+  // 잡 폴링 — 활성 잡이 있을 때만 2초마다; 끝나면 빌드 재조회 + 에이전트 빌드 자동 선택
+  useEffect(() => {
+    if (supabase === null || !project) return;
+    if (!jobs.some(isActive) && !openJob) return;
+    const client = supabase;
+    const timer = setInterval(async () => {
+      try {
+        const js = await fetchJobs(client, project.id);
+        const finished = js.filter((j) => !isActive(j) && jobs.some((o) => o.id === j.id && isActive(o)));
+        setJobs(js);
+        if (openJob) setEvents((m) => ({ ...m, [openJob]: m[openJob] ?? [] }));
+        if (openJob) fetchEvents(client, openJob).then((ev) => setEvents((m) => ({ ...m, [openJob]: ev }))).catch(() => undefined);
+        if (finished.length > 0) {
+          const bs = await fetchBuilds(client, project);
+          setBuilds(bs);
+          const withBuild = finished.find((j) => j.build_id);
+          if (withBuild?.build_id) setBuildId(withBuild.build_id);
+        }
+      } catch (e) {
+        setError((e as Error).message);
+      }
+    }, POLL_MS);
+    return () => clearInterval(timer);
+  }, [jobs, project, openJob]);
+
+  async function submitJob(section: SectionRow, request: string, parentJobId: string | null) {
+    if (supabase === null || !project) return;
+    try {
+      const row = await createJob(supabase, jobPayload({ projectId: project.id, sectionKey: section.section_key, request, parentJobId }));
+      setJobs((prev) => [row, ...prev]);
+      setOpenJob(row.id);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
+  function toggleJob(id: string) {
+    const next = openJob === id ? null : id;
+    setOpenJob(next);
+    if (next && supabase) fetchEvents(supabase, next).then((ev) => setEvents((m) => ({ ...m, [next]: ev }))).catch(() => undefined);
+  }
 
   function onApproved(row: ApprovalRow) {
     setApprovals((prev) => [row, ...prev]);
@@ -153,9 +206,14 @@ export function Model() {
                       </Text>
                     } />
                   <Group gap={4} wrap="nowrap">
+                    {s.source === 'agent' && <Badge size="xs" color="violet">LLM</Badge>}
                     {load[s.section_key] === 'loading' && <Loader size={12} />}
                     {load[s.section_key] === 'error' && <Badge size="xs" color="red">로드 실패</Badge>}
                     <Badge size="xs" color={statusColor(s.status)}>{s.status}</Badge>
+                    {AGENT_SECTIONS.includes(s.code) && (
+                      <Button size="compact-xs" variant="light" color="violet" id={`agent-${s.code}`}
+                        onClick={() => { setAskSection(s); setAskRequest(''); }}>LLM 으로 만들기</Button>
+                    )}
                     <Button size="compact-xs" variant={solo === s.section_key ? 'filled' : 'subtle'}
                       onClick={() => { const next = solo === s.section_key ? null : s.section_key; setSolo(next); viewerRef.current?.solo(next); }}>
                       단독
@@ -193,11 +251,32 @@ export function Model() {
         </Paper>
       </Box>
       <Paper w={340} p="md" withBorder radius={0}>
-        {build && (
-          <VerifyPanel project={project} build={build} sections={sections} selected={selected}
-            renderUrls={renderUrls} downloadUrls={downloadUrls} approvals={approvals} onApproved={onApproved} />
-        )}
+        <Stack gap="sm" h="100%">
+          <JobPanel jobs={jobs} events={events} open={openJob} onToggle={toggleJob} />
+          <Box style={{ flex: 1, minHeight: 0 }}>
+            {build && (
+              <VerifyPanel project={project} build={build} sections={sections} selected={selected}
+                renderUrls={renderUrls} downloadUrls={downloadUrls} approvals={approvals} onApproved={onApproved}
+                agentResult={buildJob?.result ?? null}
+                onRevise={(request) => {
+                  const target = sections.find((s) => s.source === 'agent') ?? sections.find((s) => AGENT_SECTIONS.includes(s.code));
+                  if (target) void submitJob(target, request, buildJob?.id ?? null);
+                }} />
+            )}
+          </Box>
+        </Stack>
       </Paper>
+      <Modal opened={askSection !== null} onClose={() => setAskSection(null)} title={askSection ? `${askSection.label} — LLM 으로 만들기` : ''}>
+        <Stack gap="sm">
+          <Text size="sm">Sonnet 5 가 이 섹션의 빌더 코드를 작성해 실행·채점합니다. 워커(`m3d worker`)가 켜져 있어야 처리됩니다. API 과금이 발생합니다.</Text>
+          <Textarea label="요청 (선택)" placeholder="예: 개구 보강재를 양면에 붙여 줘" value={askRequest} onChange={(e) => setAskRequest(e.currentTarget.value)} autosize minRows={2} />
+          <Group justify="flex-end">
+            <Button variant="default" size="xs" onClick={() => setAskSection(null)}>취소</Button>
+            <Button size="xs" color="violet" id="create-job-button"
+              onClick={() => { if (askSection) void submitJob(askSection, askRequest, null); setAskSection(null); }}>잡 생성</Button>
+          </Group>
+        </Stack>
+      </Modal>
     </Group>
   );
 }
