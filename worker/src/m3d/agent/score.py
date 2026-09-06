@@ -39,9 +39,18 @@ def score_section(code: str, agent_glb: Path, spec: ModelSpec, ref_dir: Path, *,
     dev = cmp["bbox_dev_max_m"]
     passed = (not cmp["only_ours"] and not cmp["only_ref"] and dev is not None and dev <= BBOX_TOL_M
               and sec["fail"] == 0 and full["fail"] == 0 and not failed_meas)
+    ref_named = load_named(ref_glb)
+    worst_detail = []
+    for w in cmp["worst"][:4]:
+        if w["dev_m"] <= BBOX_TOL_M or w["node"] not in agent_named or w["node"] not in ref_named:
+            continue
+        a, r = agent_named[w["node"]].bounds, ref_named[w["node"]].bounds
+        worst_detail.append({"node": w["node"], "ours": [[round(float(v), 3) for v in a[0]], [round(float(v), 3) for v in a[1]]],
+                             "ref": [[round(float(v), 3) for v in r[0]], [round(float(v), 3) for v in r[1]]]})
     return {
         "pass": bool(passed),
-        "compare": {k: cmp[k] for k in ("only_ours", "only_ref", "common", "bbox_dev_max_m", "bbox_dev_over_1mm", "faces_equal", "worst")},
+        "compare": {**{k: cmp[k] for k in ("only_ours", "only_ref", "common", "bbox_dev_max_m", "bbox_dev_over_1mm", "faces_equal", "worst")},
+                    "worst_detail": worst_detail},
         "section_selfcheck": _sc(sec), "assembled_selfcheck": _sc(full),
         "measure": {"PASS": meas["집계"]["PASS"], "FAIL": meas["집계"]["FAIL"], "INFO": meas["집계"]["INFO"], "failed": failed_meas},
         "assembled_glb": str(assembled),
@@ -69,6 +78,11 @@ def feedback_text(score: dict) -> str:
     worst = [w for w in c["worst"] if w["dev_m"] > BBOX_TOL_M]
     if worst:
         lines.append("정답 대비 bbox 편차 상위: " + ", ".join(f"{w['node']} {w['dev_m'] * 1000:.0f}mm" for w in worst[:8]))
+    for d in c.get("worst_detail", []):
+        (ax0, ay0, az0), (ax1, ay1, az1) = d["ours"]
+        (rx0, ry0, rz0), (rx1, ry1, rz1) = d["ref"]
+        lines.append(f"  {d['node']} bbox — 우리: x {ax0}~{ax1}, y {ay0}~{ay1}, z {az0}~{az1} / 정답: x {rx0}~{rx1}, y {ry0}~{ry1}, z {rz0}~{rz1}"
+                     " (정답 범위와 같아지도록 판·보강재의 위치와 크기를 맞출 것)")
     for key, label in (("section_selfcheck", "섹션 self-check 실패"), ("assembled_selfcheck", "결합 self-check 실패")):
         if score[key]["failed"]:
             lines.append(label + ": " + " | ".join(score[key]["failed"][:8]))
