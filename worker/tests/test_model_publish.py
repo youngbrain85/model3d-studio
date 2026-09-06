@@ -136,7 +136,7 @@ def test_build_stats_folds_summaries(cfg):
     d = _model_dir(cfg)
     st = P.build_stats(d)
     assert st == {"meshes": 30, "triangles": 100, "selfcheck": {"pass": 15, "fail": 0, "skipped": 5},
-                  "measure": {"pass": 47, "fail": 0, "info": 2}, "compare": {"match": 836, "mismatch": 0, "na": 0}}
+                  "measure": {"pass": 47, "fail": 0, "info": 2}, "compare": {"match": 836, "mismatch": 0, "na": 0}, "agent": None}
     assert P.build_stats(_model_dir(dataclasses.replace(cfg, repo_root=cfg.repo_root / "b"), with_measure=False))["measure"] is None
 
 
@@ -208,3 +208,25 @@ def test_cli_prints_summary_and_exit_code(cfg, monkeypatch):
                          "failures": [("renders/views.json", "HTTP 500: boom")], "build_id": None})
     res = CliRunner().invoke(app, ["publish-model", "ds", "--pilot"])
     assert res.exit_code == 1 and "실패: renders/views.json — HTTP 500: boom" in res.output
+
+
+def test_publish_agent_dir_with_kind_and_sources(cfg, monkeypatch):
+    d = _model_dir(cfg)
+    build = json.loads((d / "build.json").read_text(encoding="utf-8"))
+    build["sections"][1]["source"] = "agent"
+    (d / "build.json").write_text(json.dumps(build), encoding="utf-8")
+    (d / "agent").mkdir()
+    (d / "agent" / "code.py").write_text("def build_section(spec, ctx):\n    return {}\n", encoding="utf-8")
+    (d / "agent" / "score.json").write_text(json.dumps({"pass": True, "only_ours": 0, "only_ref": 0, "bbox_dev_max_m": 0.0,
+                                                        "section_fail": 0, "assembled_fail": 0, "measure_fail": 0, "attempts": 2}), encoding="utf-8")
+    (d / "agent" / "attempt1.py").write_text("x = 1\n", encoding="utf-8")        # 시도 파일은 올리지 않는다
+    db = FakeDb()
+    calls = _patch(monkeypatch, db)
+    r = P.run_publish_model(cfg, "ds", out_dir=d, kind="agent", force=True)
+    assert r["version"] == 1 and r["files"] == 13
+    b_params = [p for s, p in db.sql if s.startswith("insert into builds")][0]
+    assert b_params[2] == "agent" and b_params[6].obj["agent"] == ["ds/b1/agent/code.py", "ds/b1/agent/score.json"]
+    assert b_params[7].obj["agent"]["pass"] is True
+    s_sql, s_params = [(s, p) for s, p in db.sql if s.startswith("insert into build_sections")][1]
+    assert "source" in s_sql and s_params[-1] == "agent"
+    assert any(h["Content-Type"] == "text/x-python" for (_u, h, _d) in calls)

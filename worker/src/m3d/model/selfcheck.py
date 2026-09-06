@@ -52,8 +52,9 @@ def run(named: dict[str, trimesh.Trimesh], b: Builder, *, pilot: bool = False, s
         vt = np.asarray(named["AB1_S5_BOX_TOP"].vertices)
         vb = np.asarray(named["AB1_S5_BOX_BOT"].vertices)
         for (zc, h_exp) in b.H_CHECK:
-            st = vt[np.abs(vt[:, 2] - zc) < 1e-6]
-            sb = vb[np.abs(vb[:, 2] - zc) < 1e-6]
+            # GLB 를 다시 읽은 메시(float32)도 통과해야 한다(M5 채점) — 스테이션 간격(≥0.7m)보다 훨씬 작은 0.2mm 허용
+            st = vt[np.abs(vt[:, 2] - zc) < 2e-4]
+            sb = vb[np.abs(vb[:, 2] - zc) < 2e-4]
             ok = len(st) > 0 and len(sb) > 0
             h_meas = float(st[:, 1].min() - sb[:, 1].max()) if ok else float("nan")
             check("내공 H @P4%+0.3f" % (zc - b.Z_P4), ok and abs(h_meas - h_exp) < 0.002,

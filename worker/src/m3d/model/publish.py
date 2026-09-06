@@ -23,7 +23,9 @@ from m3d.samples.manifest import sha256_file
 BUCKET = "models"
 REQUIRED = ("build.json", "AB1_P4P5.glb", "selfcheck.json", "selfcheck_sections.json", "modelspec.json", "renders/views.json")
 OPTIONAL = ("measure.json", "compare.json")
-CONTENT_TYPES = {".glb": "model/gltf-binary", ".png": "image/png", ".json": "application/json"}
+CONTENT_TYPES = {".glb": "model/gltf-binary", ".png": "image/png", ".json": "application/json",
+                 ".py": "text/x-python", ".md": "text/markdown"}
+AGENT_FILES = ("agent/code.py", "agent/attempts.json", "agent/score.json", "agent/prompt.md")   # M5 에이전트 빌드 부속(시도 파일 제외)
 
 
 def object_key(slug: str, version: int, rel: str) -> str:
@@ -45,6 +47,7 @@ def collect_files(out_dir: Path) -> list[str]:
     files = list(REQUIRED) + [s["file"] for s in build["sections"]]
     files += sorted(p.relative_to(out_dir).as_posix() for p in (out_dir / "renders").glob("*.png"))
     files += [r for r in OPTIONAL if (out_dir / r).is_file()]
+    files += [r for r in AGENT_FILES if (out_dir / r).is_file()]
     absent = [rel for rel in files if not (out_dir / rel).is_file()]
     if absent:
         raise RuntimeError("산출물 없음: " + ", ".join(absent))
@@ -66,13 +69,16 @@ def build_stats(out_dir: Path) -> dict:
         stats["measure"] = {"pass": agg["PASS"], "fail": agg["FAIL"], "info": agg["INFO"]}
     if (out_dir / "compare.json").is_file():
         stats["compare"] = dict(_load(out_dir, "compare.json")["summary"])
+    stats["agent"] = _load(out_dir, "agent/score.json") if (out_dir / "agent" / "score.json").is_file() else None
     return stats
 
 
-def run_publish_model(cfg: Config, dataset: str, *, pilot: bool = False, force: bool = False) -> dict:
+def run_publish_model(cfg: Config, dataset: str, *, pilot: bool = False, force: bool = False,
+                      out_dir: Path | None = None, kind: str | None = None) -> dict:
+    """out_dir 를 주면 그 산출 디렉터리(에이전트 빌드 등)를, kind 를 주면 build.json 의 kind 대신 그 값을 쓴다."""
     if not cfg.supabase_url or not cfg.supabase_service_key:
         raise RuntimeError("SUPABASE_URL·SUPABASE_SERVICE_KEY 미설정 — .env 를 확인하세요")
-    out_dir = model_io.model_dir(cfg, dataset, pilot=pilot)
+    out_dir = Path(out_dir) if out_dir is not None else model_io.model_dir(cfg, dataset, pilot=pilot)
     files = collect_files(out_dir)
     build = _load(out_dir, "build.json")
     content = content_sha256(out_dir)
@@ -112,20 +118,22 @@ def run_publish_model(cfg: Config, dataset: str, *, pilot: bool = False, force: 
 
         keyed = {rel: object_key(dataset, version, rel) for rel in files}
         file_index = {"renders": [keyed[r] for r in files if r.startswith("renders/") and r.endswith(".png")],
-                      "json": [keyed[r] for r in files if r.endswith(".json") and r != "renders/views.json"],
-                      "views": keyed["renders/views.json"]}
+                      "json": [keyed[r] for r in files if r.endswith(".json") and r != "renders/views.json" and not r.startswith("agent/")],
+                      "views": keyed["renders/views.json"],
+                      "agent": [keyed[r] for r in files if r.startswith("agent/")]}
         sec_checks = _load(out_dir, "selfcheck_sections.json")
         with conn.cursor() as cur:
             cur.execute("insert into builds (project_id, version, kind, segment, content_sha256, glb_path, files, stats, git_sha) "
                         "values (%s, %s, %s, %s, %s, %s, %s, %s, %s) returning id",
-                        (project_id, version, build["kind"], build["segment"], content, keyed["AB1_P4P5.glb"],
+                        (project_id, version, kind or build["kind"], build["segment"], content, keyed["AB1_P4P5.glb"],
                          Jsonb(file_index), Jsonb(build_stats(out_dir)), build.get("git_sha")))
             build_id = cur.fetchone()[0]
             for s in build["sections"]:
                 rs = sec_checks.get(s["key"], {"pass": 0, "fail": 0, "checks": []})
-                cur.execute("insert into build_sections (build_id, section_key, code, label, glb_path, bytes, sha256, meshes, triangles, selfcheck) "
-                            "values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                cur.execute("insert into build_sections (build_id, section_key, code, label, glb_path, bytes, sha256, meshes, triangles, selfcheck, source) "
+                            "values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
                             (build_id, s["key"], s["code"], s["label"], keyed[s["file"]], s["bytes"], s["sha256"],
-                             s["meshes"], s["triangles"], Jsonb({"pass": rs["pass"], "fail": rs["fail"], "checks": rs.get("checks", [])})))
+                             s["meshes"], s["triangles"], Jsonb({"pass": rs["pass"], "fail": rs["fail"], "checks": rs.get("checks", [])}),
+                             s.get("source", "builder")))
         conn.commit()
     return {"skipped": False, "version": version, "files": len(files), "uploaded": uploaded, "failures": [], "build_id": str(build_id)}
