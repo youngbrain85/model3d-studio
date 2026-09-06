@@ -30,3 +30,36 @@ def test_screen_right_is_up_cross_eye(tmp_path):
     img = mpimg.imread(str(out))
     h, w = img.shape[:2]
     assert img[h // 2, int(w * 0.8), 0] > 0.5 and img[h // 2, int(w * 0.2), 2] > 0.5
+
+
+def test_view_contract_roundtrips_bbox_corners(tmp_path):
+    """뷰 계약: 장면 bbox 모서리가 (u,v)∈[0,1] 로 들어오고 origin 이 좌하단 한계와 일치한다."""
+    a = box_prism(-1, -2, -3, 1, 0, 4)
+    nodes = [("A", a, np.array([0, 150, 168, 255.0]))]
+    V, F, C = R.to_tris(nodes)
+    frame = {}
+    R.render(V, F, C, (0.55, -1.0, 0.4), R.Y_UP, tmp_path / "v.png", "", size=(3, 3), dpi=40, frame_out=frame)
+    assert set(frame) == {"eye", "up", "right", "xlim", "ylim"}
+    c = R.view_contract(frame, center=V.mean(axis=0))
+    o, u, v, n = (np.asarray(c[k]) for k in ("origin", "u_axis", "v_axis", "normal"))
+    assert abs(np.dot(u, v)) < 1e-9 and abs(np.linalg.norm(n) - 1) < 1e-9
+    for corner in [V.min(axis=0), V.max(axis=0), [V[:, 0].min(), V[:, 1].max(), V[:, 2].min()]]:
+        d = np.asarray(corner, float) - o
+        uu, vv = np.dot(d, u) / c["extent"][0], np.dot(d, v) / c["extent"][1]
+        assert 0.0 <= uu <= 1.0 and 0.0 <= vv <= 1.0, (uu, vv)
+    assert abs(np.dot(o, np.asarray(frame["right"])) - frame["xlim"][0]) < 1e-9
+
+
+def test_run_render_pilot_writes_views_json(tmp_path):
+    import json
+    from m3d.model.builder import Builder
+    from m3d.model.spec import ModelSpec
+    spec = ModelSpec()
+    b = Builder(spec)
+    glb = tmp_path / "p.glb"
+    b.export(b.build(pilot=True), glb)
+    paths = R.run_render(glb, tmp_path / "renders", spec, pilot=True)
+    assert [p.name for p in paths] == ["side_context.png", "front_section.png", "views.json"]
+    views = json.loads((tmp_path / "renders" / "views.json").read_text(encoding="utf-8"))
+    assert set(views) == {"side_context", "front_section"}
+    assert views["front_section"]["file"] == "front_section.png" and len(views["front_section"]["extent"]) == 2
