@@ -1,4 +1,4 @@
-// Supabase DB 타입 — supabase/migrations/0001~0004 미러 (설계서 §3).
+// Supabase DB 타입 — supabase/migrations/0001~0005 미러 (설계서 §3).
 // SQL 이 정본이다. 스키마를 바꾸면 이 파일도 같이 고친다.
 
 export type Json = string | number | boolean | null | { [key: string]: Json } | Json[];
@@ -167,9 +167,51 @@ export interface Database {
         };
         Update: never;
       };
+      builds: {
+        Row: {
+          id: string; project_id: string; version: number; kind: 'pilot' | 'full'; segment: string;
+          content_sha256: string; glb_path: string; files: BuildFiles; stats: BuildStats;
+          status: '대기' | '승인' | '반려'; git_sha: string | null; created_at: string;
+        };
+        Insert: never;
+        Update: never;
+      };
+      build_sections: {
+        Row: {
+          id: string; build_id: string; section_key: string; code: string; label: string; glb_path: string;
+          bytes: number; sha256: string; meshes: number; triangles: number; selfcheck: SectionSelfcheck;
+          status: '대기' | '승인' | '반려';
+        };
+        Insert: never;
+        Update: never;
+      };
+      approvals: {
+        Row: {
+          id: string; project_id: string; build_id: string; section_id: string | null; user_id: string;
+          verdict: '승인' | '반려'; note: string; created_at: string;
+        };
+        Insert: {
+          id?: string; project_id: string; build_id: string; section_id?: string | null; user_id?: string;
+          verdict: '승인' | '반려'; note?: string; created_at?: string;
+        };
+        Update: never;
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;
     Enums: Record<string, never>;
   };
+}
+
+// ── M4 보조 타입 (builds.files / builds.stats / build_sections.selfcheck 의 jsonb 형식) ──
+export interface BuildFiles { renders: string[]; json: string[]; views: string | null }
+export interface BuildStats {
+  meshes: number; triangles: number;
+  selfcheck: { pass: number; fail: number; skipped: number };
+  measure: { pass: number; fail: number; info: number } | null;
+  compare: { match: number; mismatch: number; na: number } | null;
+}
+export interface SectionSelfcheck {
+  pass: number; fail: number;
+  checks: Array<{ label: string; ok: boolean | null; detail: string; group: string }>;
 }

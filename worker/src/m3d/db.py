@@ -14,7 +14,8 @@ import psycopg
 
 from m3d.config import Config
 
-TABLES = ("projects", "sheets", "sheet_pages", "assets", "readings", "ambiguities", "decisions")
+TABLES = ("projects", "sheets", "sheet_pages", "assets", "readings", "ambiguities", "decisions",
+          "builds", "build_sections", "approvals")
 
 SCHEMA_MIGRATIONS_DDL = """
 create table if not exists schema_migrations (
