@@ -91,3 +91,11 @@ def test_blank_env_value_is_treated_as_unset(tmp_path, absent_env, monkeypatch):
     monkeypatch.setenv("SUPABASE_DB_URL", "   ")
     cfg = load_config(env_file=absent_env)
     assert cfg.supabase_db_url is None
+
+
+def test_model_agent_budget_default_and_env(tmp_path, absent_env, monkeypatch):
+    monkeypatch.setenv("SAMPLE_SOURCE_DIR", str(tmp_path))
+    monkeypatch.delenv("MODEL_AGENT_BUDGET_USD", raising=False)
+    assert load_config(env_file=absent_env).model_agent_budget_usd == 5.0
+    monkeypatch.setenv("MODEL_AGENT_BUDGET_USD", "2.5")
+    assert load_config(env_file=absent_env).model_agent_budget_usd == 2.5

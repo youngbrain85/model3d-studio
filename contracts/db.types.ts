@@ -1,4 +1,4 @@
-// Supabase DB 타입 — supabase/migrations/0001~0005 미러 (설계서 §3).
+// Supabase DB 타입 — supabase/migrations/0001~0006 미러 (설계서 §3).
 // SQL 이 정본이다. 스키마를 바꾸면 이 파일도 같이 고친다.
 
 export type Json = string | number | boolean | null | { [key: string]: Json } | Json[];
@@ -169,7 +169,7 @@ export interface Database {
       };
       builds: {
         Row: {
-          id: string; project_id: string; version: number; kind: 'pilot' | 'full'; segment: string;
+          id: string; project_id: string; version: number; kind: 'pilot' | 'full' | 'agent'; segment: string;
           content_sha256: string; glb_path: string; files: BuildFiles; stats: BuildStats;
           status: '대기' | '승인' | '반려'; git_sha: string | null; created_at: string;
         };
@@ -180,7 +180,7 @@ export interface Database {
         Row: {
           id: string; build_id: string; section_key: string; code: string; label: string; glb_path: string;
           bytes: number; sha256: string; meshes: number; triangles: number; selfcheck: SectionSelfcheck;
-          status: '대기' | '승인' | '반려';
+          status: '대기' | '승인' | '반려'; source: 'builder' | 'agent';
         };
         Insert: never;
         Update: never;
@@ -196,6 +196,24 @@ export interface Database {
         };
         Update: never;
       };
+      jobs: {
+        Row: {
+          id: string; project_id: string; kind: 'model-section'; section_key: string; request: string;
+          parent_job_id: string | null; status: 'queued' | 'running' | 'done' | 'failed'; attempts: number;
+          cost_usd: number; budget_usd: number; result: JobResult | null; build_id: string | null; user_id: string;
+          created_at: string; updated_at: string;
+        };
+        Insert: {
+          id?: string; project_id: string; kind: 'model-section'; section_key: string; request?: string;
+          parent_job_id?: string | null; budget_usd?: number; user_id?: string;
+        };
+        Update: never;
+      };
+      job_events: {
+        Row: { id: number; job_id: string; ts: string; level: 'info' | 'warn' | 'error'; message: string };
+        Insert: never;
+        Update: never;
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;
@@ -204,14 +222,25 @@ export interface Database {
 }
 
 // ── M4 보조 타입 (builds.files / builds.stats / build_sections.selfcheck 의 jsonb 형식) ──
-export interface BuildFiles { renders: string[]; json: string[]; views: string | null }
+export interface BuildFiles { renders: string[]; json: string[]; views: string | null; agent?: string[] }
 export interface BuildStats {
   meshes: number; triangles: number;
   selfcheck: { pass: number; fail: number; skipped: number };
   measure: { pass: number; fail: number; info: number } | null;
   compare: { match: number; mismatch: number; na: number } | null;
+  agent?: AgentScoreSummary | null;
 }
 export interface SectionSelfcheck {
   pass: number; fail: number;
   checks: Array<{ label: string; ok: boolean | null; detail: string; group: string }>;
+}
+
+// ── M5 보조 타입 (builds.stats.agent / jobs.result 의 jsonb 형식) ──
+export interface AgentScoreSummary {
+  pass: boolean; only_ours: number; only_ref: number; bbox_dev_max_m: number | null;
+  section_fail: number; assembled_fail: number; measure_fail: number | null; attempts: number;
+}
+export interface JobResult {
+  pass: boolean; reason?: string; attempts: number; cost_usd: number; build_version?: number; build_id?: string;
+  assumptions?: string[]; questions?: string[]; score?: AgentScoreSummary; error?: string;
 }

@@ -34,6 +34,7 @@ class Config:
     supabase_db_url: str | None
     anthropic_api_key: str | None
     anthropic_workspace_id: str | None
+    model_agent_budget_usd: float          # M5 모델링 에이전트 누적 API 상한(USD), env MODEL_AGENT_BUDGET_USD
 
     # ── 리포 내부 경로 ──────────────────────────────────────────────
     @property
@@ -133,4 +134,5 @@ def load_config(env_file: Path | None = None) -> Config:
         supabase_db_url=_env("SUPABASE_DB_URL"),
         anthropic_api_key=_env("ANTHROPIC_API_KEY"),
         anthropic_workspace_id=_env("ANTHROPIC_WORKSPACE_ID"),
+        model_agent_budget_usd=float(_env("MODEL_AGENT_BUDGET_USD") or "5.0"),
     )
