@@ -285,6 +285,8 @@ def sec_diaphragms(W, E: Expect, ck: Checks, out: dict):
         s = sect_y(W[nm], y0)
         sv = np.asarray(s.vertices)
         plate = sv[np.abs(sv[:, 0]) > 2.0]
+        if len(plate) == 0:                                    # 폭 ≤ 4.0m 인 임의 판(에이전트 산출물) — 전체 정점으로 대체
+            plate = sv
         zc = float((plate[:, 2].min() + plate[:, 2].max()) / 2)
         gap = x_gap_at(s)
         vt, vb = sect_z(TOPM, zc), sect_z(BOTM, zc)
@@ -442,6 +444,8 @@ def run(glb: Path, spec: ModelSpec) -> dict:
             fn(W, E, ck, out)
         except KeyError as exc:
             ck.add_missing("%s 섹션 — 노드 누락" % label, "KeyError: %s" % exc)
+        except Exception as exc:                               # noqa: BLE001 — 임의 형상(에이전트 산출물)에서도 재실측은 끝까지 간다
+            ck.add_missing("%s 섹션 — 실측 오류" % label, "%s: %s" % (type(exc).__name__, exc))
     out.pop("_bar_tops", None)
     agg = ck.summary()
     result = {

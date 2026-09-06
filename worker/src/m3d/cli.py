@@ -655,5 +655,16 @@ def publish_model(
     raise typer.Exit(code=1 if r["failures"] else 0)
 
 
+@app.command()
+def worker(
+    once: bool = typer.Option(False, "--once", help="잡 1건만 처리하고 종료"),
+    poll: float = typer.Option(2.0, "--poll", help="큐 폴링 간격(초)"),
+) -> None:
+    """[11] 모델링 에이전트 워커 데몬 — jobs 큐를 집어 LLM 코드 생성·실행·채점·업로드 (M5 §5). API 과금 발생(MODEL_AGENT_BUDGET_USD 상한)."""
+    from m3d.agent import worker as agent_worker
+    cfg = load_config()
+    agent_worker.serve(cfg, poll=poll, once=once)
+
+
 if __name__ == "__main__":
     sys.exit(app())
