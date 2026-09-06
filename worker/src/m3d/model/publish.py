@@ -1,7 +1,8 @@
 """m3d publish-model — 섹션 GLB·결합본·렌더·검증 JSON 을 비공개 버킷 `models` 에 올리고 builds·build_sections 행을 만든다 (M4 설계서 §5).
 
 업로드는 service key(RLS 우회)로만 하며 값은 어떤 출력에도 남기지 않는다. HTTP 는 reading.publish._upload(표준 라이브러리) 재사용.
-버전 규칙(D7): content_sha256 = sha256(결합본 sha256 ‖ modelspec sha256). 최신 빌드와 같으면 skip(--force 예외).
+버전 규칙(D7): content_sha256 = sha256(결합본 sha256 ‖ modelspec sha256). 같은 해시의 빌드가 종류·버전 무관 하나라도 있으면 skip(--force 예외),
+새 버전은 프로젝트 최대 버전 + 1.
 업로드가 하나라도 실패하면 DB 행을 만들지 않는다. DB 에 저장하는 경로는 버킷 접두 없는 오브젝트 키다(웹 createSignedUrls 규칙).
 """
 
@@ -84,12 +85,15 @@ def run_publish_model(cfg: Config, dataset: str, *, pilot: bool = False, force: 
             if row is None:
                 raise RuntimeError(f"프로젝트 '{dataset}' 없음 — seed 먼저")
             project_id = row[0]
-            cur.execute("select version, content_sha256 from builds where project_id = %s order by version desc limit 1",
-                        (project_id,))
-            latest = cur.fetchone()
-        if latest is not None and latest[1] == content and not force:
-            return {"skipped": True, "version": latest[0], "files": len(files), "uploaded": 0, "failures": [], "build_id": None}
-        version = (latest[0] + 1) if latest is not None else 1
+            # 같은 내용의 빌드가 (종류·버전 무관) 하나라도 있으면 skip — 시범/전체가 번갈아 올라가도 새 버전을 만들지 않는다 (D7)
+            cur.execute("select version from builds where project_id = %s and content_sha256 = %s order by version desc limit 1",
+                        (project_id, content))
+            same = cur.fetchone()
+            cur.execute("select coalesce(max(version), 0) from builds where project_id = %s", (project_id,))
+            max_version = cur.fetchone()[0]
+        if same is not None and not force:
+            return {"skipped": True, "version": same[0], "files": len(files), "uploaded": 0, "failures": [], "build_id": None}
+        version = max_version + 1
 
         uploaded, failures = 0, []
         for rel in files:

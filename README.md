@@ -112,3 +112,19 @@ $env:PYTHONUTF8='1'
 
 `ModelSpec` 스키마가 바뀌면 `modelspec.json` 을 다시 만든다 — `build` 는 저장 파일에 없는 필드를 발견하면 경고한다.
 합격 판정은 `data/derived/ab1-p4p5/model/acceptance-m3.md`(설계서 §1 ①~⑥).
+
+## 3D 검수 (M4)
+
+모델을 섹션(구간/부재그룹) GLB 10개 + 결합본으로 산출해 비공개 버킷 `models` 에 올리고, 웹에서 섹션을 따로 띄워 내부까지 검수한 뒤 승인/반려를 기록한다. 모두 **LLM 호출 없음**.
+
+```powershell
+$env:PYTHONUTF8='1'
+.\worker\.venv\Scripts\m3d.exe build ab1-p4p5            # model/sections/P4P5/<그룹>.glb ×10 + AB1_P4P5.glb(결합본) + selfcheck_sections.json + build.json
+.\worker\.venv\Scripts\m3d.exe render ab1-p4p5           # renders/*.png + renders/views.json(뷰 계약)
+.\worker\.venv\Scripts\m3d.exe publish-model ab1-p4p5    # Storage 업로드 + builds/build_sections (내용 같으면 skip · --force · --pilot)
+cd web; npm run dev                                       # http://localhost:5173/p/ab1-p4p5/model
+```
+
+화면: 좌 섹션 트리(표시 체크·단독 보기·상태 배지·빌드 버전), 중앙 three.js 캔버스(프리셋 4·z/x 단면 클리핑·부재 클릭 → 노드명),
+우 검증 패널(섹션 self-check·재실측·참조대조 집계·렌더·다운로드·승인/반려 기록). 승인은 `approvals` 에 이력으로 쌓이고 트리거가
+`build_sections.status`/`builds.status` 를 갱신한다. 합격 판정: `data/derived/ab1-p4p5/model/acceptance-m4.md`.

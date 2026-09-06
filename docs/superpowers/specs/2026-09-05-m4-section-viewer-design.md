@@ -28,7 +28,7 @@ P4~P5 정밀 모델을 **섹션(구간/부재그룹) 단위 GLB** 로 나눠 만
 | D4 | 산출 디렉터리: 전 부재 `model/`, 시범 `model/pilot/` — 같은 파일명(`AB1_P4P5.glb`, `sections/…`, `selfcheck.json`, `renders/`). 기존 `_pilot` 접미 파일은 폐기(README 갱신) | 시범·전체가 같은 코드 경로를 타고, publish 가 디렉터리 하나를 통째로 올린다 |
 | D5 | DB 3표: `builds`, `build_sections`, `approvals`(append-only, decisions 와 같은 패턴 + 트리거로 status 갱신). 아키텍처 §4 초안의 `verifications`·`renders`·`members` 표는 만들지 않고 `builds.stats`(jsonb) + Storage 경로로 대신한다 | YAGNI. 파일이 Storage 에 있고 집계만 DB 에 있으면 화면·다운로드에 충분 |
 | D6 | Storage 비공개 버킷 `models`, 키 `<slug>/b<version>/…`. 업로드는 service key(CLI)만, 웹은 로그인 세션 서명 URL(`createSignedUrls` 일괄). `crops` 와 같은 정책 | M2b 에서 검증된 패턴 재사용 |
-| D7 | 버전: `builds.version` 은 프로젝트별 1부터 증가. 내용 해시 = sha256(결합본 GLB sha256 ‖ modelspec.json sha256). 최신 빌드와 해시가 같으면 skip(버전 불변), `--force` 면 같은 내용이라도 새 버전 | `m3d ssot` 의 "내용이 바뀔 때만 버전 증가" 와 같은 규칙 |
+| D7 | 버전: `builds.version` 은 프로젝트별 1부터 증가(종류 무관 최대 버전 + 1). 내용 해시 = sha256(결합본 GLB sha256 ‖ modelspec.json sha256). 같은 해시의 빌드가 종류·버전 무관 하나라도 있으면 skip(그 버전 보고), `--force` 면 같은 내용이라도 새 버전 | `m3d ssot` 의 "내용이 바뀔 때만 버전 증가" 와 같은 규칙. 시범/전체가 번갈아 올라가도 중복 버전이 생기지 않아야 한다(실증 중 발견해 정정) |
 | D8 | 뷰어는 three.js 0.184 직접(GLTFLoader·OrbitControls·Raycaster·클리핑 평면). React 는 캔버스 컨테이너·패널만. BVH·meshopt 불사용(30k 삼각형) | 참조 web-app-v2 에서 검증된 조합, 의존성 1개 |
 | D9 | 렌더 뷰 계약 `renders/views.json`(렌더별 origin·u/v 축·extent·eye·up) 을 render.py 가 함께 쓴다. 2D 연동 자체는 범위 밖 | KB §7 "뷰 계약을 함께 산출" — 몇 줄로 끝나고 나중 연동의 전제 |
 | D10 | 시범→게이트→확산: 워커(섹션·publish) → 웹 최소 뷰어(섹션 트리 + 캔버스 로드) 시점에 사용자 확인 게이트 → 클리핑·피킹·검증 패널·승인 | KB §5 |

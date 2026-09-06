@@ -14,8 +14,9 @@ PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
 
 
 class FakeDb:
-    def __init__(self, latest=None):
-        self.latest = latest            # (version, content_sha256) | None
+    def __init__(self, max_version=0, same=None):
+        self.max_version = max_version  # 프로젝트 최대 버전(종류 무관)
+        self.same = same                # 같은 content_sha256 을 가진 기존 빌드 버전 | None
         self.sql = []
         self.committed = False
 
@@ -31,8 +32,10 @@ class FakeCursor:
         self._rows = []
         if s.startswith("select id from projects"):
             self._rows = [("proj-1",)]
-        elif s.startswith("select version, content_sha256 from builds"):
-            self._rows = [self.db.latest] if self.db.latest else []
+        elif s.startswith("select version from builds where project_id = %s and content_sha256 = %s"):
+            self._rows = [(self.db.same,)] if self.db.same is not None else []
+        elif s.startswith("select coalesce(max(version), 0) from builds"):
+            self._rows = [(self.db.max_version,)]
         elif s.startswith("insert into builds"):
             self._rows = [("build-1",)]
 
@@ -139,7 +142,7 @@ def test_build_stats_folds_summaries(cfg):
 
 def test_publish_uploads_all_files_and_inserts_rows(cfg, monkeypatch):
     d = _model_dir(cfg)
-    db = FakeDb(latest=None)
+    db = FakeDb()
     calls = _patch(monkeypatch, db)
     r = P.run_publish_model(cfg, "ds")
     assert r == {"skipped": False, "version": 1, "files": 11, "uploaded": 11, "failures": [], "build_id": "build-1"}
@@ -159,8 +162,8 @@ def test_publish_uploads_all_files_and_inserts_rows(cfg, monkeypatch):
 
 
 def test_publish_skips_same_content_unless_force(cfg, monkeypatch):
-    d = _model_dir(cfg)
-    db = FakeDb(latest=(2, P.content_sha256(d)))
+    _model_dir(cfg)
+    db = FakeDb(max_version=2, same=2)
     calls = _patch(monkeypatch, db)
     r = P.run_publish_model(cfg, "ds")
     assert r["skipped"] is True and r["version"] == 2 and r["uploaded"] == 0 and calls == []
@@ -170,9 +173,22 @@ def test_publish_skips_same_content_unless_force(cfg, monkeypatch):
     assert calls[0][0].startswith("https://fake.supabase.co/storage/v1/object/models/ds/b3/")
 
 
+def test_publish_matches_content_across_kinds_not_only_latest(cfg, monkeypatch):
+    """시범(pilot)이 마지막 버전이어도 같은 내용의 전체 빌드가 있으면 skip — 종류 무관 내용 해시 대조(D7)."""
+    _model_dir(cfg)
+    db = FakeDb(max_version=3, same=1)               # b1 이 같은 내용, b3(다른 종류)이 최신
+    calls = _patch(monkeypatch, db)
+    r = P.run_publish_model(cfg, "ds")
+    assert r["skipped"] is True and r["version"] == 1 and calls == []
+    db2 = FakeDb(max_version=3, same=None)           # 같은 내용 없음 → 최대 버전 + 1
+    calls2 = _patch(monkeypatch, db2)
+    r2 = P.run_publish_model(cfg, "ds")
+    assert r2["skipped"] is False and r2["version"] == 4 and len(calls2) == 11
+
+
 def test_upload_failure_blocks_db_rows(cfg, monkeypatch):
     _model_dir(cfg)
-    db = FakeDb(latest=None)
+    db = FakeDb()
     _patch(monkeypatch, db, fail_rel="sections/P4P5/DIA.glb")
     r = P.run_publish_model(cfg, "ds")
     assert r["version"] is None and r["build_id"] is None and r["uploaded"] == 10
