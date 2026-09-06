@@ -25,7 +25,10 @@ export function Projects() {
       {projects?.map((p) => (
         <Card key={p.id} withBorder>
           <Text fw={600}>{p.name}</Text>
-          <Anchor component={Link} to={`/p/${p.slug}/questions`}>질문 카드 열기 →</Anchor>
+          <Group gap="lg">
+            <Anchor component={Link} to={`/p/${p.slug}/questions`}>질문 카드 열기 →</Anchor>
+            <Anchor component={Link} to={`/p/${p.slug}/model`}>3D 검수 열기 →</Anchor>
+          </Group>
         </Card>
       ))}
     </Stack>
