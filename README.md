@@ -128,3 +128,15 @@ cd web; npm run dev                                       # http://localhost:517
 화면: 좌 섹션 트리(표시 체크·단독 보기·상태 배지·빌드 버전), 중앙 three.js 캔버스(프리셋 4·z/x 단면 클리핑·부재 클릭 → 노드명),
 우 검증 패널(섹션 self-check·재실측·참조대조 집계·렌더·다운로드·승인/반려 기록). 승인은 `approvals` 에 이력으로 쌓이고 트리거가
 `build_sections.status`/`builds.status` 를 갱신한다. 합격 판정: `data/derived/ab1-p4p5/model/acceptance-m4.md`.
+
+## LLM 모델링 (M5)
+
+웹 검수 화면에서 섹션의 "LLM 으로 만들기"를 누르면 `jobs` 큐에 잡이 생기고, 내 PC 의 워커가 Sonnet 5 로 섹션 빌더 코드를 받아
+샌드박스에서 실행·채점(정답 대조 + 레고식 결합 재실측)한 뒤 에이전트 빌드로 올린다. **API 과금 발생** — `.env` 의 `MODEL_AGENT_BUDGET_USD`(기본 5) 누적 상한.
+
+```powershell
+$env:PYTHONUTF8='1'
+.\worker\.venv\Scripts\m3d.exe worker --once     # 큐의 잡 1건 처리 (--once 없이 데몬으로)
+```
+
+M5 범위: 격벽(P4P5/DIA) 1섹션. 산출물 `data/derived/ab1-p4p5/model/agent/<job>/`(코드·시도·채점·프롬프트·크롭). 판정: `model/acceptance-m5.md`.
