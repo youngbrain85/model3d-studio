@@ -9,10 +9,19 @@ from m3d.config import Config
 from m3d.model.spec import ModelSpec
 
 
-def model_dir(cfg: Config, dataset: str) -> Path:
+def model_dir(cfg: Config, dataset: str, *, pilot: bool = False) -> Path:
+    """산출 디렉터리 — 전체 model/, 시범 model/pilot/ (같은 파일명, M4 D4)."""
     d = cfg.derived_dir / dataset / "model"
+    if pilot:
+        d = d / "pilot"
     d.mkdir(parents=True, exist_ok=True)
     return d
+
+
+def write_build_json(out_dir: Path, data: dict) -> Path:
+    path = Path(out_dir) / "build.json"
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    return path
 
 
 def save_modelspec(cfg: Config, dataset: str, spec: ModelSpec, sources: dict, stats: dict) -> Path:

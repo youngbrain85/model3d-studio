@@ -269,3 +269,21 @@ class Builder:
             scene.add_geometry(m, geom_name=name, node_name=name)
         scene.export(str(glb_path))
         return scene
+
+    def export_sections(self, sections: dict[str, dict[str, trimesh.Trimesh]], out_dir) -> list[dict]:
+        """섹션별 GLB — out_dir/sections/<segment>/<CODE>.glb. 메타(파일·메시·삼각형·바이트·sha256) 목록을 돌려준다 (M4 D2)."""
+        from pathlib import Path
+
+        from m3d.model.sections import LABELS
+        from m3d.samples.manifest import sha256_file
+        out = []
+        for key, meshes in sections.items():
+            segment, code = key.split("/")
+            rel = f"sections/{segment}/{code}.glb"
+            path = Path(out_dir) / rel
+            path.parent.mkdir(parents=True, exist_ok=True)
+            self.export(meshes, path)
+            out.append({"key": key, "code": code, "label": LABELS[code], "file": rel, "meshes": len(meshes),
+                        "triangles": int(sum(len(m.faces) for m in meshes.values())),
+                        "bytes": path.stat().st_size, "sha256": sha256_file(path)})
+        return out

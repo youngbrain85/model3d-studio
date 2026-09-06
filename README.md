@@ -102,8 +102,8 @@ SSOT(+결정)를 `ModelSpec` 으로 옮겨 P4~P5 정밀 모델(GLB)을 결정론
 ```powershell
 $env:PYTHONUTF8='1'
 .\worker\.venv\Scripts\m3d.exe modelspec ab1-p4p5       # ssot.json → modelspec.json (필드별 출처 ssot/decision/default/derived 통계)
-.\worker\.venv\Scripts\m3d.exe build ab1-p4p5 --pilot   # 시범: 본체·격벽만 → AB1_P4P5_pilot.glb + selfcheck_pilot.json (승인 게이트)
-.\worker\.venv\Scripts\m3d.exe build ab1-p4p5           # 전 부재 515 메시 → AB1_P4P5.glb + selfcheck.json (fail>0 → exit 1)
+.\worker\.venv\Scripts\m3d.exe build ab1-p4p5 --pilot   # 시범: 본체·격벽만 → model/pilot/{sections/,AB1_P4P5.glb,selfcheck*.json,build.json} (승인 게이트)
+.\worker\.venv\Scripts\m3d.exe build ab1-p4p5           # 전 부재 → model/{sections/P4P5/<그룹>.glb ×10, AB1_P4P5.glb(결합본), selfcheck.json, selfcheck_sections.json, build.json}
 .\worker\.venv\Scripts\m3d.exe measure ab1-p4p5         # 독립 재실측(빌더 미참조, 5mm/0/0.5°) → measure.json (fail>0 → exit 1)
 .\worker\.venv\Scripts\m3d.exe render ab1-p4p5          # 실척 정사영 4장 → renders/{side_context,front_section,bottom_iso,interior_cells}.png
 .\worker\.venv\Scripts\m3d.exe compare-model ab1-p4p5   # 참조 measure v2·GLB 대조 → compare.json (--ref 생략 시 REFERENCE_MODELS_DIR)

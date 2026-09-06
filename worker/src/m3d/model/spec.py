@@ -23,6 +23,7 @@ class Coord(BaseModel):
     deck_drop: float = 0.398            # [Q2] 강상판 상면 EL = 계획고 − 0.398
     t_slab_crown: float = 0.348
     walk_side_sign: int = -1            # 보도측 = −x (서측)
+    segment: str = "P4P5"               # 구간 키 — 섹션 키 접두 (M4 D1)
 
     @property
     def span(self) -> float:

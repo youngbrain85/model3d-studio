@@ -496,12 +496,16 @@ def modelspec(dataset: str = typer.Argument(..., help="데이터셋 슬러그"))
 @app.command()
 def build(
     dataset: str = typer.Argument(..., help="데이터셋 슬러그"),
-    pilot: bool = typer.Option(False, "--pilot", help="시범: 본체·격벽만 (승인 게이트용)"),
+    pilot: bool = typer.Option(False, "--pilot", help="시범: 본체·격벽만 → model/pilot/ (승인 게이트용)"),
 ) -> None:
-    """[6] ModelSpec → 3D 모델 GLB + self-check (M3 설계 §4)."""
+    """[6] ModelSpec → 섹션 GLB(구간/부재그룹) + 결합본 + self-check (M3 §4, M4 D2·D3·D4)."""
     import json as _json
+    import shutil
+    import subprocess
+    from m3d.model import sections as model_sections
     from m3d.model import selfcheck as model_selfcheck
     from m3d.model.builder import Builder
+    from m3d.samples.manifest import sha256_file
     cfg = load_config()
     try:
         spec = model_io.load_modelspec(cfg, dataset)
@@ -511,21 +515,45 @@ def build(
                        + ", ".join(drift[:6]) + (" …" if len(drift) > 6 else ""))
         b = Builder(spec)
         named = b.build(pilot=pilot)
-        out_dir = model_io.model_dir(cfg, dataset)
-        glb = out_dir / ("AB1_P4P5_pilot.glb" if pilot else "AB1_P4P5.glb")
-        b.export(named, glb)
+        out_dir = model_io.model_dir(cfg, dataset, pilot=pilot)
+        sections = model_sections.split(named, spec.coord.segment)
+        sec_meta = b.export_sections(sections, out_dir)
+        glb = out_dir / "AB1_P4P5.glb"
+        b.export(model_sections.assemble(sections), glb)
+        if pilot:
+            shutil.copyfile(model_io.model_dir(cfg, dataset) / "modelspec.json", out_dir / "modelspec.json")
     except (RuntimeError, AssertionError) as exc:
         typer.echo(f"실패: {exc}")
         raise typer.Exit(code=1) from None
     r = model_selfcheck.run(named, b, pilot=pilot)
-    (out_dir / ("selfcheck_pilot.json" if pilot else "selfcheck.json")).write_text(
-        _json.dumps(r, ensure_ascii=False, indent=2), encoding="utf-8")
+    (out_dir / "selfcheck.json").write_text(_json.dumps(r, ensure_ascii=False, indent=2), encoding="utf-8")
+    sec_results = {}
+    for meta in sec_meta:
+        rs = model_selfcheck.run(sections[meta["key"]], b, pilot=pilot, section=meta["code"])
+        sec_results[meta["key"]] = rs
+        meta["selfcheck"] = {"pass": rs["pass"], "fail": rs["fail"]}
+        typer.echo(f"[{'PASS' if rs['fail'] == 0 else 'FAIL'}] 섹션 {meta['key']} ({meta['label']}) 메시 {meta['meshes']} "
+                   f"pass={rs['pass']} fail={rs['fail']}")
+    (out_dir / "selfcheck_sections.json").write_text(_json.dumps(sec_results, ensure_ascii=False, indent=2), encoding="utf-8")
     for c in r["checks"]:
         tag = "PASS" if c["ok"] else ("SKIP" if c["ok"] is None else "FAIL")
         typer.echo(f"[{tag}] {c['label']} — {c['detail']}")
-    typer.echo(f"메시 {r['meshes']}개 (수밀 {r['watertight']}) / 삼각형 {r['triangles']} / 출력: {glb}")
-    typer.echo(f"selfcheck pass={r['pass']} fail={r['fail']} skipped={r['skipped']} meshes={r['meshes']}")
-    raise typer.Exit(code=1 if r["fail"] else 0)
+    try:
+        git_sha = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, cwd=cfg.repo_root,
+                                 check=True).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        git_sha = None
+    model_io.write_build_json(out_dir, {
+        "kind": "pilot" if pilot else "full", "segment": spec.coord.segment,
+        "assembled": {"file": "AB1_P4P5.glb", "meshes": r["meshes"], "triangles": r["triangles"],
+                      "bytes": glb.stat().st_size, "sha256": sha256_file(glb)},
+        "sections": sec_meta, "selfcheck": {"pass": r["pass"], "fail": r["fail"], "skipped": r["skipped"]},
+        "git_sha": git_sha})
+    sec_fail = sum(rs["fail"] for rs in sec_results.values())
+    typer.echo(f"섹션 {len(sec_meta)} / 메시 {r['meshes']}개 (수밀 {r['watertight']}) / 삼각형 {r['triangles']} / 출력: {out_dir}")
+    typer.echo(f"selfcheck pass={r['pass']} fail={r['fail']} skipped={r['skipped']} meshes={r['meshes']} "
+               f"sections={len(sec_meta)} section_fail={sec_fail}")
+    raise typer.Exit(code=1 if (r["fail"] or sec_fail) else 0)
 
 
 @app.command()
@@ -537,8 +565,8 @@ def render(
     from m3d.model import render as model_render
     cfg = load_config()
     spec = model_io.load_modelspec(cfg, dataset)
-    out_dir = model_io.model_dir(cfg, dataset)
-    glb = out_dir / ("AB1_P4P5_pilot.glb" if pilot else "AB1_P4P5.glb")
+    out_dir = model_io.model_dir(cfg, dataset, pilot=pilot)
+    glb = out_dir / "AB1_P4P5.glb"
     if not glb.is_file():
         typer.echo(f"실패: {glb} 없음 — `m3d build {dataset}{' --pilot' if pilot else ''}` 먼저")
         raise typer.Exit(code=1)

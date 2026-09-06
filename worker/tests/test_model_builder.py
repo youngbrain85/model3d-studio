@@ -130,3 +130,42 @@ def test_full_spec_changes_propagate():
     assert abs(cs[:, 0].mean() - (spec.box.x_web + 5.0)) < 1e-9
     ctr = np.asarray(named["AB1_S5_BARRIER_CTR"].vertices)
     assert abs(ctr[:, 0].min() + (7.85 - 0.45 - 2.0)) < 1e-9
+
+
+# ── 섹션 (M4 Task 1) ──────────────────────────────────────────────────────────────
+def test_selfcheck_has_group_tags_and_section_filter(full):
+    from m3d.model import sections as S
+    b, named = full
+    r_all = selfcheck.run(named, b, pilot=False)
+    groups = {c["label"]: c["group"] for c in r_all["checks"]}
+    assert groups["격벽 26"] == "DIA" and groups["프레임 부재 25×6=150"] == "FRM"
+    assert groups["bbox x(상부구조)"] == "ASSEMBLY" and groups["수밀 전건"] == "COMMON"
+    assert any(l.startswith("내공 H") and g == "BOX" for l, g in groups.items())
+    secs = S.split(named, "P4P5")
+    r_dia = selfcheck.run(secs["P4P5/DIA"], b, section="DIA")
+    labels = {c["label"] for c in r_dia["checks"]}
+    assert r_dia["fail"] == 0 and r_dia["skipped"] == 0
+    assert "격벽 26" in labels and "수밀 전건" in labels and "메시 수 ≥1" in labels
+    assert not any(l.startswith("bbox") or l.startswith("내공 H") for l in labels)
+    r_box = selfcheck.run(secs["P4P5/BOX"], b, section="BOX")
+    assert r_box["fail"] == 0 and sum(1 for c in r_box["checks"] if c["label"].startswith("내공 H")) == 8
+    for key, meshes in secs.items():
+        assert selfcheck.run(meshes, b, section=key.split("/")[1])["fail"] == 0, key
+
+
+def test_export_sections_and_assembly_equal_monolithic(full, tmp_path):
+    from m3d.model import compare as C
+    from m3d.model import sections as S
+    b, named = full
+    secs = S.split(named, "P4P5")
+    meta = b.export_sections(secs, tmp_path)
+    assert [m["code"] for m in meta] == S.CODES
+    assert all((tmp_path / m["file"]).is_file() and m["bytes"] > 0 and len(m["sha256"]) == 64 for m in meta)
+    assert meta[1] == {**meta[1], "key": "P4P5/DIA", "label": "격벽", "meshes": 26, "file": "sections/P4P5/DIA.glb"}
+    assembled = tmp_path / "AB1_P4P5.glb"
+    b.export(S.assemble(secs), assembled)
+    mono = tmp_path / "mono.glb"
+    b.export(named, mono)
+    g = C.compare_glb(assembled, mono)
+    assert g["only_ours"] == [] and g["only_ref"] == [] and g["common"] == 515
+    assert g["bbox_dev_max_m"] == 0.0 and g["faces_equal"] is True
