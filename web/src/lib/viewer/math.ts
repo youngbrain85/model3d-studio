@@ -18,11 +18,14 @@ export function clipPlane(axis: Axis, value: number, keep: Keep): { normal: Vec3
 
 const FOV_DEG = 45;
 
-/** 프리셋 카메라 — bbox 중심을 보며 전체가 화면에 들어오는 거리. side=+x, front=+z, bottom=아래·앞·옆, iso=위·앞·옆 */
-export function presetCamera(preset: Preset, box: Box): { position: Vec3; target: Vec3 } {
+/** 프리셋 카메라 — bbox 중심을 보며 경계구 전체가 화면(세로 FOV 45°, 가로는 aspect 로 축소)에 들어오는 거리.
+ *  side=+x, front=+z, bottom=아래·앞·옆, iso=위·앞·옆 */
+export function presetCamera(preset: Preset, box: Box, aspect = 1): { position: Vec3; target: Vec3 } {
   const c: Vec3 = [(box.min[0] + box.max[0]) / 2, (box.min[1] + box.max[1]) / 2, (box.min[2] + box.max[2]) / 2];
-  const size = Math.max(box.max[0] - box.min[0], box.max[1] - box.min[1], box.max[2] - box.min[2]);
-  const dist = (size / 2) / Math.tan((FOV_DEG * Math.PI) / 360) * 1.15;
+  const radius = Math.hypot(box.max[0] - box.min[0], box.max[1] - box.min[1], box.max[2] - box.min[2]) / 2;
+  const vfov = (FOV_DEG * Math.PI) / 180;
+  const hfov = 2 * Math.atan(Math.tan(vfov / 2) * Math.max(aspect, 0.05));
+  const dist = (radius / Math.sin(Math.min(vfov, hfov) / 2)) * 1.05;
   const dir: Record<Preset, Vec3> = {
     side: [1, 0, 0], front: [0, 0, 1], bottom: [0.35, -1, 0.25], iso: [0.6, 0.45, 0.65],
   };

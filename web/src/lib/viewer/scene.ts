@@ -32,7 +32,9 @@ export function createViewer(canvas: HTMLCanvasElement): Viewer {
   const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 5000);
   const controls = new OrbitControls(camera, canvas);
   let dirty = true;
+  let userMoved = false;                 // 사용자가 카메라를 움직이기 전까지는 섹션이 도착할 때마다 전체에 맞춘다
   controls.addEventListener('change', () => { dirty = true; });
+  controls.addEventListener('start', () => { userMoved = true; });
 
   const sections = new Map<string, THREE.Group>();
   const visible = new Map<string, boolean>();
@@ -66,7 +68,7 @@ export function createViewer(canvas: HTMLCanvasElement): Viewer {
   function fit(p: Preset) {
     const b = bounds();
     if (!b) return;
-    const { position, target } = presetCamera(p, b);
+    const { position, target } = presetCamera(p, b, camera.aspect);
     camera.position.set(...position);
     controls.target.set(...target);
     camera.updateProjectionMatrix();
@@ -132,12 +134,11 @@ export function createViewer(canvas: HTMLCanvasElement): Viewer {
       const group = new THREE.Group();
       group.name = key;
       group.add(gltf.scene);
-      const first = sections.size === 0;
       sections.set(key, group);
       if (!visible.has(key)) visible.set(key, true);
       scene.add(group);
       applyVisibility();
-      if (first) fit('iso');
+      if (!userMoved) fit('iso');
       return { meshes: n };
     },
     setVisible(key, on) { visible.set(key, on); applyVisibility(); },
@@ -150,7 +151,7 @@ export function createViewer(canvas: HTMLCanvasElement): Viewer {
       }
       applyPlanes();
     },
-    preset(p) { fit(p); },
+    preset(p) { userMoved = true; fit(p); },
     highlight(node) {
       if (highlighted) { (highlighted.material as THREE.MeshStandardMaterial).emissive.setHex(0x000000); highlighted = null; }
       if (node) {
