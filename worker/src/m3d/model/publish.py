@@ -69,7 +69,11 @@ def build_stats(out_dir: Path) -> dict:
         stats["measure"] = {"pass": agg["PASS"], "fail": agg["FAIL"], "info": agg["INFO"]}
     if (out_dir / "compare.json").is_file():
         stats["compare"] = dict(_load(out_dir, "compare.json")["summary"])
-    stats["agent"] = _load(out_dir, "agent/score.json") if (out_dir / "agent" / "score.json").is_file() else None
+    if (out_dir / "agent" / "score.json").is_file():
+        data = _load(out_dir, "agent/score.json")
+        stats["agent"] = data.get("summary", data)          # 루프가 쓴 파일은 {summary, score, …}, 요약만 stats 에
+    else:
+        stats["agent"] = None
     return stats
 
 

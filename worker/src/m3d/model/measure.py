@@ -289,7 +289,8 @@ def sec_diaphragms(W, E: Expect, ck: Checks, out: dict):
             plate = sv
         zc = float((plate[:, 2].min() + plate[:, 2].max()) / 2)
         gap = x_gap_at(s)
-        vt, vb = sect_z(TOPM, zc), sect_z(BOTM, zc)
+        zs_ = min(max(zc, E.Z_P4 + 0.001), E.Z_P5 - 0.001)   # 받침선 위 판(에이전트 산출물)도 본체 슬라이스가 잡히게 안쪽으로
+        vt, vb = sect_z(TOPM, zs_), sect_z(BOTM, zs_)
         top_in, bot_in = float(vt[:, 1].min()), float(vb[:, 1].max())
         h_eff = (min(float(b[1][1]), top_in) - max(float(b[0][1]), bot_in)) * 1000.0
         h_phys = float(b[1][1] - b[0][1]) * 1000.0

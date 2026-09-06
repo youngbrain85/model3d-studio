@@ -34,7 +34,8 @@ def score_section(code: str, agent_glb: Path, spec: ModelSpec, ref_dir: Path, *,
     assembled = work_dir / "assembled.glb"
     b.export(named, assembled)
     meas = measure.run(assembled, spec)
-    failed_meas = [c["항목"] for c in meas["대조"] if c["판정"] == "FAIL"]
+    failed_meas = [c["항목"] + (f" ({str(c['실측'])[:160]})" if isinstance(c.get("실측"), str) else "")
+                   for c in meas["대조"] if c["판정"] == "FAIL"]
     dev = cmp["bbox_dev_max_m"]
     passed = (not cmp["only_ours"] and not cmp["only_ref"] and dev is not None and dev <= BBOX_TOL_M
               and sec["fail"] == 0 and full["fail"] == 0 and not failed_meas)

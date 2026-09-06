@@ -32,6 +32,11 @@ CODE_CONTRACT = """## 코드 계약
 - 노드명은 `AB1_S5_<그룹><번호>` 규칙(격벽: AB1_S5_DIA01 … AB1_S5_DIA26, 받침선 P4 쪽이 01). 노드명 = 객체 DB 연결 키.
 - 모든 메시는 수밀(loft/extrude/box_prism 결과)이고 `geom.paint(mesh, ctx.COL_STEEL)` 로 색을 입힌다. 접합부는 ctx.INS 만큼 관통 삽입한다(공면 금지).
 - 허용 import: math, numpy, trimesh, m3d.model.geom. 파일·네트워크·다른 모듈 접근 금지. 단위 m, Y-up, 좌표계는 §1 규약.
+- 코드 인자 spec 에는 **값만** 들어 있다: spec["diaphragm"]["spacing"] == 2.8 (float), spec["diaphragm"]["h_table"] == [[2.8, 3.739], ...].
+  아래 'ModelSpec 발췌' 의 {"value", "source"} 포장은 출처 표시용이며 코드에서는 ["value"] 로 접근하지 않는다.
+- 반복 판(격벽 등)은 두께 중심을 전역 체인 위치 z = z_p4 + k·간격 에 두고 판면은 두께의 절반(±t/2)만 z 로 뻗는다.
+  INS 관통 삽입은 상·하판·웹과 만나는 y·x 방향 접합에만 쓴다(z 로 판 두께를 키우지 않는다). 검증기는 체인 위치 ±10mm 안에 판면 정점이 있는지 본다.
+- 지점 격벽(받침선 위, 01·26)은 판 자체 외에 도면의 수직보강재·잭업보강재를 경간 안쪽 면에 별도 솔리드로 붙여 같은 노드에 합친다(trimesh.util.concatenate).
 - 판두께 방향·개구·보강재 배치처럼 도면에서 확인한 값은 코드 주석에 근거(시트·값)를 적는다."""
 
 OUTPUT_FORMAT = """## 출력
