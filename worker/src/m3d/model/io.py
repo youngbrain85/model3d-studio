@@ -59,3 +59,11 @@ def modelspec_drift(cfg: Config, dataset: str) -> list[str]:
     path = model_dir(cfg, dataset) / "modelspec.json"
     stored = json.loads(path.read_text(encoding="utf-8"))["spec"]
     return missing_paths(ModelSpec.model_validate(stored).model_dump(), stored)
+
+
+def load_modelspec_raw(cfg: Config, dataset: str) -> dict:
+    """modelspec.json 원문({"spec","sources","stats"}) — 에이전트 프롬프트가 출처를 같이 쓴다."""
+    path = model_dir(cfg, dataset) / "modelspec.json"
+    if not path.is_file():
+        raise RuntimeError(f"modelspec.json 없음 — `m3d modelspec {dataset}` 먼저")
+    return json.loads(path.read_text(encoding="utf-8"))
