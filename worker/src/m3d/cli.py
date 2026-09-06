@@ -635,5 +635,25 @@ def compare_model(
     typer.echo(f"compare match={s['match']} mismatch={s['mismatch']} na={s['na']}")
 
 
+@app.command("publish-model")
+def publish_model(
+    dataset: str = typer.Argument(..., help="데이터셋 슬러그"),
+    pilot: bool = typer.Option(False, "--pilot", help="model/pilot/ 산출물을 올린다"),
+    force: bool = typer.Option(False, "--force", help="내용이 같아도 새 버전으로 재업로드"),
+) -> None:
+    """[10] 섹션 GLB·결합본·렌더·검증 JSON → Storage 버킷 models + builds·build_sections (M4 설계서 §5)."""
+    from m3d.model import publish as model_publish
+    cfg = load_config()
+    try:
+        r = model_publish.run_publish_model(cfg, dataset, pilot=pilot, force=force)
+    except RuntimeError as exc:
+        typer.echo(f"실패: {exc}")
+        raise typer.Exit(code=1) from None
+    for rel, reason in r["failures"]:
+        typer.echo(f"실패: {rel} — {reason}")
+    typer.echo(f"publish-model version={r['version']} files={r['files']} uploaded={r['uploaded']} skipped={str(r['skipped']).lower()}")
+    raise typer.Exit(code=1 if r["failures"] else 0)
+
+
 if __name__ == "__main__":
     sys.exit(app())

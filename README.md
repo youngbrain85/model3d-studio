@@ -107,6 +107,7 @@ $env:PYTHONUTF8='1'
 .\worker\.venv\Scripts\m3d.exe measure ab1-p4p5         # 독립 재실측(빌더 미참조, 5mm/0/0.5°) → measure.json (fail>0 → exit 1)
 .\worker\.venv\Scripts\m3d.exe render ab1-p4p5          # 실척 정사영 4장 → renders/{side_context,front_section,bottom_iso,interior_cells}.png
 .\worker\.venv\Scripts\m3d.exe compare-model ab1-p4p5   # 참조 measure v2·GLB 대조 → compare.json (--ref 생략 시 REFERENCE_MODELS_DIR)
+.\worker\.venv\Scripts\m3d.exe publish-model ab1-p4p5   # 섹션·결합본·렌더·검증 JSON → 비공개 버킷 models + builds/build_sections (내용 같으면 skip, --force, --pilot)
 ```
 
 `ModelSpec` 스키마가 바뀌면 `modelspec.json` 을 다시 만든다 — `build` 는 저장 파일에 없는 필드를 발견하면 경고한다.
