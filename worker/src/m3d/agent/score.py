@@ -12,6 +12,12 @@ from m3d.model.render import load_nodes
 from m3d.model.spec import ModelSpec
 
 BBOX_TOL_M = 0.005
+BBOX_EPS_M = 1e-4       # GLB float32 반올림 여유 — |좌표| ≤ 1,000m 에서 ulp ≤ 6e-5 m; 정확히 5mm 차이가 5.001mm 로 읽혀 뒤집히지 않게(M6 잡 3)
+
+
+def within_bbox_tol(dev_m) -> bool:
+    """정답 대비 bbox 편차 판정 — 5mm 이하(반올림 여유 0.1mm 포함)."""
+    return dev_m is not None and dev_m <= BBOX_TOL_M + BBOX_EPS_M
 
 
 def node_role(code: str, node: str, spec: ModelSpec) -> str | None:
@@ -44,19 +50,19 @@ def score_section(code: str, agent_glb: Path, spec: ModelSpec, ref_dir: Path, *,
     failed_meas = [c["항목"] + (f" ({str(c['실측'])[:160]})" if isinstance(c.get("실측"), str) else "")
                    for c in meas["대조"] if c["판정"] == "FAIL"]
     dev = cmp["bbox_dev_max_m"]
-    passed = (not cmp["only_ours"] and not cmp["only_ref"] and dev is not None and dev <= BBOX_TOL_M
+    passed = (not cmp["only_ours"] and not cmp["only_ref"] and within_bbox_tol(dev)
               and sec["fail"] == 0 and full["fail"] == 0 and not failed_meas)
     ref_named = load_named(ref_glb)
     worst_detail = []
     for w in cmp["worst"][:4]:
-        if w["dev_m"] <= BBOX_TOL_M or w["node"] not in agent_named or w["node"] not in ref_named:
+        if within_bbox_tol(w["dev_m"]) or w["node"] not in agent_named or w["node"] not in ref_named:
             continue
         a, r = agent_named[w["node"]].bounds, ref_named[w["node"]].bounds
         axes = []
         for i, ax in enumerate("xyz"):
             for bound, idx in (("min", 0), ("max", 1)):
                 o, rf = float(a[idx][i]), float(r[idx][i])
-                if abs(rf - o) > BBOX_TOL_M:
+                if not within_bbox_tol(abs(rf - o)):
                     axes.append({"axis": ax, "bound": bound, "ours": round(o, 3), "ref": round(rf, 3), "delta_mm": int(round((rf - o) * 1000))})
         worst_detail.append({"node": w["node"], "role": node_role(code, w["node"], spec), "ours": [[round(float(v), 3) for v in a[0]], [round(float(v), 3) for v in a[1]]],
                              "ref": [[round(float(v), 3) for v in r[0]], [round(float(v), 3) for v in r[1]]], "axes": axes})
@@ -104,7 +110,7 @@ def feedback_text(score: dict) -> str:
         lines.append("빠진 노드(정답에는 있음): " + ", ".join(c["only_ref"][:30]))
     if c["only_ours"]:
         lines.append("남는 노드(정답에 없음): " + ", ".join(c["only_ours"][:30]))
-    worst = [w for w in c["worst"] if w["dev_m"] > BBOX_TOL_M]
+    worst = [w for w in c["worst"] if not within_bbox_tol(w["dev_m"])]
     if worst:
         lines.append("정답 대비 bbox 편차 상위: " + ", ".join(f"{w['node']} {w['dev_m'] * 1000:.0f}mm" for w in worst[:8]))
     for d in c.get("worst_detail", []):

@@ -72,3 +72,14 @@ def test_feedback_hints_plate_ok_when_checks_pass():
     assert "  AB1_S5_DIA01(지점 격벽): z 최대 -524.936 → 정답 -524.61 — 정답이 +z 쪽으로 326mm 더 뻗음" in fb
     assert "돌출량은 spec 의 '돌출[축]' 값" in fb
     assert "판 두께·위치는 검사를 통과했으니 바꾸지 말 것" in fb and "체인 위치 ±10mm 에 없다" not in fb
+
+
+def test_bbox_rule_has_float32_rounding_margin():
+    """정확히 5mm(INS 누락) 차이가 GLB float32 반올림으로 5.001mm 가 되어도 통과, 5.2mm 는 실패(M6 잡 3: dev 0.005001).
+
+    float32 는 |좌표| ≤ 1,000m 에서 ulp ≤ 6e-5 m 이므로 여유 0.1mm 면 반올림을 덮고 실제 편차(0.2mm+)는 걸러진다.
+    """
+    assert S.BBOX_EPS_M == 1e-4
+    assert S.within_bbox_tol(0.005) and S.within_bbox_tol(0.005001) and S.within_bbox_tol(0.0051)
+    assert not S.within_bbox_tol(0.0052) and not S.within_bbox_tol(0.008)
+    assert not S.within_bbox_tol(None)
