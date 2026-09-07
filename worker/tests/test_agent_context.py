@@ -82,6 +82,7 @@ def test_section_bundle_composes_system_and_user_with_feedback(tmp_path):
     text = "\n".join(p["text"] for p in parts if p["type"] == "text")
     assert '"source": "ssot:C01/다이아프램 간격"' in text and "참조 차용" in text
     assert '"doc": "(t 두께[x]' in text and "출처·의미 표시용" in b["system"] and "doc 은 필드 의미" in text
+    assert "코드의 spec 인자에는 포장 없이 값만" in text                 # M6 잡 3: ["value"] 접근 재발 → 발췌 바로 앞에 경고
     assert "이전 시도" in text and "only_ref: AB1_S5_DIA26" in text and "개구를 1.4×1.4 로" in text
     assert "이전 시도 결과 렌더(자기검토용)" in text and "렌더: 이전 시도 DIA01 측면" in text
     assert text.index("이전 시도의 실행 오류·채점") < text.index("이전 시도 결과 렌더(자기검토용)") < text.index("사용자 요청")

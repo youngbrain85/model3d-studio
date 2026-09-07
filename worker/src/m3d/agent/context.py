@@ -93,7 +93,7 @@ def section_bundle(section_key: str, *, spec_dict: dict, sources: dict, evidence
     ex = spec_excerpt(spec_dict, sources)
     parts: list[dict] = [
         {"type": "text", "text": f"섹션 {section_key} (구간 {segment}, 부재그룹 {code}). 이 섹션의 모든 노드를 만드는 build_section 을 작성하라."},
-        {"type": "text", "text": "ModelSpec 발췌 (m 단위; source 가 ssot: 이면 판독 확정값, default 는 참조 차용 — 도면으로 확인할 것; doc 은 필드 의미):\n"
+        {"type": "text", "text": "ModelSpec 발췌 (m 단위; source 가 ssot: 이면 판독 확정값, default 는 참조 차용 — 도면으로 확인할 것; doc 은 필드 의미; 코드의 spec 인자에는 포장 없이 값만 들어온다: spec['diaphragm']['spacing'] == 2.8, ['value'] 접근 금지):\n"
                                  + json.dumps(ex, ensure_ascii=False)},
     ]
     if evidence:
