@@ -185,8 +185,14 @@ def x_gap_at(path3d):
 class Checks:
     def __init__(self):
         self.rows: list[dict] = []
+        self.group: str | None = None          # run() 이 섹션마다 설정 (M8 D1)
 
-    def add(self, name, exp, meas, tol, unit=""):
+    def _row(self, row: dict, group: str | None) -> dict:
+        row["섹션"] = group or self.group or "ASSEMBLY"
+        self.rows.append(row)
+        return row
+
+    def add(self, name, exp, meas, tol, unit="", group=None):
         e = np.atleast_1d(np.asarray(exp, dtype=float))
         m = np.atleast_1d(np.asarray(meas, dtype=float))
         if len(e) != len(m):
@@ -194,27 +200,35 @@ class Checks:
         else:
             dev = float(np.max(np.abs(e - m))) if len(e) else 0.0
             ok = bool(np.isfinite(dev)) and dev <= tol + 1e-9
+
         def val(a):
             return [round(float(v), 4) for v in a] if len(a) != 1 else round(float(a[0]), 4)
-        self.rows.append({
-            "항목": name, "단위": unit, "기대": val(e), "실측": val(m),
-            "허용오차": tol, "최대편차": None if dev is None or not np.isfinite(dev) else round(dev, 4),
-            "판정": "PASS" if ok else "FAIL"})
+        self._row({"항목": name, "단위": unit, "기대": val(e), "실측": val(m),
+                   "허용오차": tol, "최대편차": None if dev is None or not np.isfinite(dev) else round(dev, 4),
+                   "판정": "PASS" if ok else "FAIL"}, group)
         return ok
 
-    def add_info(self, name, meas, note, unit=""):
-        self.rows.append({"항목": name, "단위": unit, "기대": "사양 미기재(" + note + ")",
-                          "실측": meas, "허용오차": None, "최대편차": None, "판정": "INFO"})
+    def add_info(self, name, meas, note, unit="", group=None):
+        self._row({"항목": name, "단위": unit, "기대": "사양 미기재(" + note + ")",
+                   "실측": meas, "허용오차": None, "최대편차": None, "판정": "INFO"}, group)
 
-    def add_missing(self, name, detail):
-        self.rows.append({"항목": name, "단위": "", "기대": "노드 존재", "실측": detail,
-                          "허용오차": None, "최대편차": None, "판정": "FAIL"})
+    def add_missing(self, name, detail, group=None):
+        self._row({"항목": name, "단위": "", "기대": "노드 존재", "실측": detail,
+                   "허용오차": None, "최대편차": None, "판정": "FAIL"}, group)
 
     def summary(self):
         n_pass = sum(1 for c in self.rows if c["판정"] == "PASS")
         n_fail = sum(1 for c in self.rows if c["판정"] == "FAIL")
         n_info = sum(1 for c in self.rows if c["판정"] == "INFO")
         return {"검증항목": len(self.rows), "PASS": n_pass, "FAIL": n_fail, "INFO": n_info}
+
+    def by_section(self) -> dict[str, dict]:
+        """섹션 코드 → 판정 집계 (M8 D1)."""
+        agg: dict[str, dict] = {}
+        for c in self.rows:
+            g = agg.setdefault(c["섹션"], {"PASS": 0, "FAIL": 0, "INFO": 0})
+            g[c["판정"]] += 1
+        return agg
 
 
 # ══ 실측 섹션 (각각 독립 — 노드 누락은 FAIL 1건으로 기록) ═════════════════════════
@@ -374,7 +388,7 @@ def sec_wg_cs(W, E: Expect, ck: Checks, out: dict):
     cs_all = [nm for nm in names if re.fullmatch(r"AB1_S5_CS\d{3}[LR]", nm)]
     n_pair = E.N_WG // 2
     ck.add("WG 본체 수 (§6 %d쌍=%d)" % (n_pair, E.N_WG), E.N_WG, len(wg_main), 0, "개")
-    ck.add("CS 세그 수 (§7 %d×2=%d)" % (n_pair, E.N_WG), E.N_WG, len(cs_all), 0, "개")
+    ck.add("CS 세그 수 (§7 %d×2=%d)" % (n_pair, E.N_WG), E.N_WG, len(cs_all), 0, "개", group="CS")
     tag = "WG%03dL" % E.WG_NO
     wg = W["AB1_S5_" + tag]
     tip = float(wg.bounds[0][0]) if abs(wg.bounds[0][0]) > abs(wg.bounds[1][0]) else float(wg.bounds[1][0])
@@ -429,9 +443,10 @@ def sec_mesh_count(W, E: Expect, ck: Checks, out: dict):
     ck.add("총 메시 수 (구성 유도 %d — §1~§10)" % E.N_MESH, E.N_MESH, len(W), 0, "개")
 
 
-SECTIONS = [("bbox", sec_bbox), ("내공 H", sec_h_profile), ("강상판 상면", sec_deck_top), ("격벽", sec_diaphragms),
-            ("프레임", sec_frames), ("종리브", sec_ribs), ("WG·CS", sec_wg_cs), ("받침", sec_bearings),
-            ("슬래브·방호벽", sec_slab), ("메시 수", sec_mesh_count)]
+SECTIONS = [("bbox", "ASSEMBLY", sec_bbox), ("내공 H", "BOX", sec_h_profile), ("강상판 상면", "BOX", sec_deck_top),
+            ("격벽", "DIA", sec_diaphragms), ("프레임", "FRM", sec_frames), ("종리브", "RIB", sec_ribs),
+            ("WG·CS", "WG", sec_wg_cs), ("받침", "BRG", sec_bearings), ("슬래브·방호벽", "SLAB", sec_slab),
+            ("메시 수", "ASSEMBLY", sec_mesh_count)]
 
 
 def run(glb: Path, spec: ModelSpec) -> dict:
@@ -440,13 +455,15 @@ def run(glb: Path, spec: ModelSpec) -> dict:
     E = Expect(spec)
     ck = Checks()
     out: dict = {}
-    for label, fn in SECTIONS:
+    for label, code, fn in SECTIONS:
+        ck.group = code
         try:
             fn(W, E, ck, out)
         except KeyError as exc:
             ck.add_missing("%s 섹션 — 노드 누락" % label, "KeyError: %s" % exc)
         except Exception as exc:                               # noqa: BLE001 — 임의 형상(에이전트 산출물)에서도 재실측은 끝까지 간다
             ck.add_missing("%s 섹션 — 실측 오류" % label, "%s: %s" % (type(exc).__name__, exc))
+    ck.group = None
     out.pop("_bar_tops", None)
     agg = ck.summary()
     result = {
@@ -458,5 +475,6 @@ def run(glb: Path, spec: ModelSpec) -> dict:
     result.update(out)
     result["대조"] = ck.rows
     result["집계"] = agg
+    result["섹션별"] = ck.by_section()
     result["종합판정"] = "PASS" if agg["FAIL"] == 0 else "FAIL"
     return result

@@ -4,11 +4,27 @@ import subprocess
 import sys
 
 import numpy as np
+import pytest
 import trimesh
 
 from m3d.model import measure as M
+from m3d.model.builder import Builder
 from m3d.model.geom import box_prism
 from m3d.model.spec import ModelSpec
+
+
+@pytest.fixture(scope="module")
+def spec():
+    return ModelSpec()
+
+
+@pytest.fixture(scope="module")
+def ref_glb(tmp_path_factory, spec):
+    d = tmp_path_factory.mktemp("m")
+    b = Builder(spec)
+    glb = d / "ref.glb"
+    b.export(b.build(pilot=False), glb)
+    return glb
 
 
 def test_expect_derives_reference_values_from_spec():
@@ -89,3 +105,16 @@ def test_measure_module_does_not_import_builder():
             "print(bad); sys.exit(1 if bad else 0)")
     r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
     assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_every_measure_row_carries_a_section_tag(ref_glb, spec):
+    """섹션별 판정(M8 D1)을 하려면 행마다 귀속 섹션이 있어야 한다."""
+    from m3d.model import sections as X
+    r = M.run(ref_glb, spec)
+    codes = set(X.CODES) | {"ASSEMBLY"}
+    missing = [c["항목"] for c in r["대조"] if not c.get("섹션")]
+    assert missing == [], f"섹션 태그 없는 행: {missing}"
+    assert {c["섹션"] for c in r["대조"]} <= codes
+    agg = r["섹션별"]
+    assert agg["DIA"]["PASS"] >= 1 and agg["BRG"]["PASS"] >= 1
+    assert sum(v["PASS"] + v["FAIL"] + v["INFO"] for v in agg.values()) == len(r["대조"])
