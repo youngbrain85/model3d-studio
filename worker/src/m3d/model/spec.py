@@ -112,7 +112,7 @@ class RibZone(BaseModel):
     pitch: float = Field(..., description="열 간격(m, x) — 열은 x=0 중심 대칭 배치")
     t: float = Field(..., description="리브 판 두께(m, x)")
     h: float = Field(..., description="리브 높이(m, y) — 붙는 판면에서 내공 쪽으로")
-    from_web: float | None = Field(None, description="웹면에서 첫 열까지 거리(m, x) — 지점존 3열에만 쓰고, None 이면 중심 대칭 배치만 쓴다")
+    from_web: float | None = Field(None, description="웹면에서 첫 열까지 거리(m, x) 표기값 — 참조 빌더는 형상에 쓰지 않는다: 모든 존의 열은 x=0 중심 대칭으로 (i − (cols−1)/2)·pitch (i=0..cols−1)")
 
 
 class Rib(BaseModel):
@@ -159,7 +159,7 @@ class WG(BaseModel):
     strut_lower: tuple[float, float] = Field((0.302, 2.413),
                                              description="(x 웹 외면에서 거리[x], y 강상판 상면 ctx.y_deck_top 아래 깊이[y]) 스트럿 하단 작업점 — 스트럿은 이 점에서 knee 점까지 뻗는다(x 로 3.6m 넘게 눕는 긴 부재)")
     bracket: tuple[float, float, float] = Field((0.35, 2.17, 2.70),
-                                                description="(t 두께[z], h 높이[y], w 폭[x]) 웹 부착 브래킷")
+                                                description="(d 돌출[x, 웹 외면에서 바깥], y0 상단 깊이, y1 하단 깊이 — 둘 다 ctx.y_deck_top 아래로 재는 값[y]) 웹 부착 정착대 [A11]: x 는 웹 외면−INS ~ 웹 외면+d, y 는 y_deck_top−y1 ~ y_deck_top−y0")
 
 
 class CS(BaseModel):
@@ -203,12 +203,12 @@ class Bearing(BaseModel):
     x: float = Field(1.55, description="받침 중심 x(m) — 좌우 대칭 ±x")
     kind: str = Field("isolation", description="받침 종류(면진, 잠정) [Q4] — 형상에는 영향 없음")
     sole: tuple[float, float, float, float] = Field((1.37, 0.022, 0.054, 0.038),
-                                                    description="(a 한 변[x·z], t 판 두께[y], h1 리브 높이[y], t1 리브 두께[x]) 솔플레이트 — 하판 하면에 붙는다")
-    body_h: float = Field(0.337, description="받침 본체 높이(m, y) — 솔플레이트 아래")
+                                                    description="(a 한 변[x·z], t0, t1, t 두께[y]) 솔플레이트 — 참조 빌더는 첫 값을 한 변으로, **네 번째 값을 판 두께**로 쓴다(둘째·셋째는 형상에 쓰지 않는다). 하판 하면 ctx.y_bot_out(받침선) 에서 아래로 그 두께만큼")
+    body_h: float = Field(0.337, description="하판 하면에서 받침 하면까지 깊이(m, y) — 본체 자체 높이가 아니다. ctx.y_bot_out(받침선) − body_h 가 받침 하면이고 EL 검산(el_check) 기준면이다 [A18]. 본체는 그 면과 솔플레이트 밑면 사이를 채운다")
     base: float = Field(0.825, description="받침 하부판 한 변(m, x·z)")
     body_d: float = Field(0.65, description="받침 본체 지름(m, x·z) — 원형 단면")
-    mortar: tuple[float, float] = Field((0.05, 0.9), description="(t 두께[y], a 한 변[x·z]) 무수축 모르타르 — 받침 아래")
-    block: tuple[float, float] = Field((1.3, 0.105), description="(a 한 변[x·z], t 두께[y]) 받침 블록 — 모르타르 아래, 모델 최하단")
+    mortar: tuple[float, float] = Field((0.05, 0.9), description="(t 두께[y], a 한 변[x·z]) 무수축 모르타르 — 받침 하면에서 아래로 t")
+    block: tuple[float, float] = Field((1.3, 0.105), description="(a 한 변[x·z], t 두께[y]) 받침 블록 — 모르타르 밑면에서 아래로 t. 모델 최하단")
     el_check: dict[str, float] = Field(default_factory=lambda: {"P4": 20.137, "P5": 21.789},
                                        description="교각별 받침 하면 EL 검산값(m) — 모델 y = EL − coord.y_datum")
 
