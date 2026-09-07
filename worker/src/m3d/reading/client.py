@@ -126,6 +126,7 @@ def call_structured(client, cfg: Config, dataset: str, *, model: str, system: st
     """
     schema = anthropic.transform_schema(out_format)
     attempt_messages = messages
+    spent = 0.0                          # 재시도 포함 누적 비용 — 반환 usage 에 싣는다(잡 원장 정합, M6)
     for attempt in (1, 2):
         resp = client.messages.create(
             model=model, max_tokens=max_tokens, system=system,
@@ -140,6 +141,7 @@ def call_structured(client, cfg: Config, dataset: str, *, model: str, system: st
             "cached": False, "attempt": attempt, "retried": attempt > 1,
             "stop_reason": resp.stop_reason,
         })
+        spent += float(usage.get("cost_usd") or 0.0)
         truncated = resp.stop_reason == "max_tokens"
         text = next((b.text for b in resp.content if b.type == "text"), None)
         if text is None:
@@ -155,7 +157,7 @@ def call_structured(client, cfg: Config, dataset: str, *, model: str, system: st
             out = out_format.model_validate_json(text)
             if post_validate is not None:
                 post_validate(out)
-            return out, usage
+            return out, {**usage, "cost_usd": round(spent, 6)}
         except ValueError as exc:   # pydantic ValidationError 는 ValueError 하위
             if attempt == 2:
                 raise

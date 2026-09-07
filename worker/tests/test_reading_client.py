@@ -137,6 +137,7 @@ def test_call_structured_retries_once_on_invalid_output(cfg):
                                  stage="smoke")
     assert out.answer == "ping"
     assert len(client.messages.calls) == 2 and usage["retried"] is True
+    assert abs(usage["cost_usd"] - 0.008) < 1e-9          # 반환 usage 의 비용은 재시도 포함 합계(각 호출 $0.004) — M6 잡 원장 정합
     retry_blocks = client.messages.calls[1]["messages"][-1]["content"]
     assert any("[재시도]" in b["text"] for b in retry_blocks)
 
