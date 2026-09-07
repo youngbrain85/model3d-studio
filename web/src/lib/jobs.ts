@@ -2,7 +2,7 @@
 import type { Database, JobResult } from '../../../contracts/db.types';
 import type { Client } from './models';
 
-export const AGENT_SECTIONS = ['DIA'];                       // M5: 격벽만
+export const AGENT_SECTIONS = ['DIA', 'SP04', 'HST', 'SLAB', 'BRG', 'FRM', 'RIB', 'CS', 'WG'];  // M7: 본체(BOX) 제외
 export type JobStatus = 'queued' | 'running' | 'done' | 'failed';
 export type JobRow = Database['public']['Tables']['jobs']['Row'];
 export type JobEventRow = Database['public']['Tables']['job_events']['Row'];
@@ -42,6 +42,19 @@ export async function createJob(client: Client, payload: JobInsert): Promise<Job
   const { data, error } = await client.from('jobs').insert(payload as never).select('*').single();
   if (error) throw new Error(error.message);
   return data as unknown as JobRow;
+}
+
+export function jobPayloads(p: {
+  projectId: string; sectionKeys: string[]; request: string; parentJobId: string | null; budgetUsd?: number;
+}): JobInsert[] {
+  if (p.sectionKeys.length === 0) throw new RangeError('섹션을 하나 이상 고르세요');
+  return p.sectionKeys.map((sectionKey) => jobPayload({ ...p, sectionKey }));
+}
+
+export async function createJobs(supabase: Client, rows: JobInsert[]): Promise<JobRow[]> {
+  const { data, error } = await supabase.from('jobs').insert(rows as never).select('*');
+  if (error) throw new Error(error.message);
+  return (data ?? []) as unknown as JobRow[];
 }
 
 export async function fetchJobs(client: Client, projectId: string, limit = 5): Promise<JobRow[]> {

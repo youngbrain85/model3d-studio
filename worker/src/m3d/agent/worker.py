@@ -83,11 +83,15 @@ def run_once(cfg: Config, *, run_job_fn=None) -> bool:
         return True
 
 
-def serve(cfg: Config, *, poll: float = 2.0, once: bool = False) -> None:
-    print(f"worker 시작 — poll {poll}s, 예산 상한 ${cfg.model_agent_budget_usd:.2f} (Ctrl+C 로 종료)")
+def serve(cfg: Config, *, poll: float = 2.0, once: bool = False, drain: bool = False, run_job_fn=None) -> None:
+    """큐를 처리한다 — once: 1건, drain: 큐가 빌 때까지(일괄 실행, M7 D6), 그 밖에는 상주."""
+    mode = "한 건" if once else ("큐 소진" if drain else "상주")
+    print(f"worker 시작 — {mode}, poll {poll}s, 기본 예산 상한 ${cfg.model_agent_budget_usd:.2f} (Ctrl+C 로 종료)")
     while True:
-        did = run_once(cfg)
-        if once and did:
+        did = run_once(cfg) if run_job_fn is None else run_once(cfg, run_job_fn=run_job_fn)
+        if did and once:
             return
         if not did:
+            if once or drain:
+                return
             time.sleep(poll)

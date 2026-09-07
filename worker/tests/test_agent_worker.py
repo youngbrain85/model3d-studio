@@ -103,3 +103,29 @@ def test_run_once_marks_failed_on_reason_or_exception(cfg, monkeypatch):
     fin2 = [p for s, p in db.sql if s.startswith("update jobs set status = %s")][-1]
     assert fin2[0] == "failed" and "kaboom" in json.dumps(fin2[1].obj, ensure_ascii=False)
     assert any(s.startswith("insert into job_events") and p[1] == "error" for s, p in db.sql)
+
+
+def test_serve_drain_processes_queue_then_returns(cfg, monkeypatch):
+    """일괄 큐: --drain 이면 큐를 비우고 스스로 끝난다(M7 D6)."""
+    db = FakeDb(queued=[ROW, ROW])
+    monkeypatch.setattr(W.psycopg, "connect", lambda *a, **k: FakeConn(db))
+    done = []
+
+    def fake_run_job(cfg, dataset, job, emit):
+        done.append(job["section_key"])
+        return {"pass": True, "attempts": 1, "cost_usd": 0.1, "build_version": 1, "build_id": "b",
+                "assumptions": [], "questions": []}
+    W.serve(cfg, poll=0.0, drain=True, run_job_fn=fake_run_job)
+    assert len(done) == 2
+
+
+def test_serve_once_still_returns_after_one_job(cfg, monkeypatch):
+    db = FakeDb(queued=[ROW, ROW])
+    monkeypatch.setattr(W.psycopg, "connect", lambda *a, **k: FakeConn(db))
+    n = []
+
+    def one(cfg, dataset, job, emit):
+        n.append(1)
+        return {"pass": True, "attempts": 1, "cost_usd": 0.0, "assumptions": [], "questions": []}
+    W.serve(cfg, poll=0.0, once=True, run_job_fn=one)
+    assert len(n) == 1

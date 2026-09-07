@@ -8,7 +8,7 @@ import {
 
 import { JobPanel } from '../components/JobPanel';
 import { VerifyPanel } from '../components/VerifyPanel';
-import { AGENT_SECTIONS, DEFAULT_BUDGET_USD, createJob, fetchEvents, fetchJobs, isActive, jobPayload, type JobEventRow, type JobRow } from '../lib/jobs';
+import { AGENT_SECTIONS, DEFAULT_BUDGET_USD, createJob, createJobs, fetchEvents, fetchJobs, isActive, jobPayload, jobPayloads, type JobEventRow, type JobRow } from '../lib/jobs';
 import {
   fetchApprovals, fetchBuilds, fetchJson, fetchSections, signedUrls,
   type ApprovalRow, type BuildRow, type SectionRow,
@@ -50,6 +50,8 @@ export function Model() {
   const [askSection, setAskSection] = useState<SectionRow | null>(null);
   const [askRequest, setAskRequest] = useState('');
   const [askBudget, setAskBudget] = useState<number>(DEFAULT_BUDGET_USD);
+  const [batchPicked, setBatchPicked] = useState<Set<string>>(new Set());     // 일괄 모델링 대상 섹션 키
+  const [batchOpen, setBatchOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const viewerRef = useRef<Viewer | null>(null);
@@ -157,6 +159,18 @@ export function Model() {
     }
   }
 
+  async function submitBatch(sectionKeys: string[], request: string, budgetUsd: number) {
+    if (supabase === null || !project) return;
+    try {
+      const rows = await createJobs(supabase, jobPayloads({ projectId: project.id, sectionKeys, request, parentJobId: null, budgetUsd }));
+      setJobs((prev) => [...rows, ...prev]);
+      setOpenJob(rows[0]?.id ?? null);
+      setBatchPicked(new Set());
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
   function toggleJob(id: string) {
     const next = openJob === id ? null : id;
     setOpenJob(next);
@@ -190,6 +204,15 @@ export function Model() {
               <Button size="compact-xs" variant={selectedKey === null ? 'filled' : 'subtle'} onClick={() => setSelectedKey(null)}>결합본 선택</Button>
             </Group>
           )}
+          <Group gap={6}>
+            <Button size="compact-xs" color="violet" variant="light" id="create-jobs-button" disabled={batchPicked.size === 0}
+              onClick={() => { setAskSection(null); setAskRequest(''); setBatchOpen(true); }}>
+              선택 {batchPicked.size}개 LLM 모델링
+            </Button>
+            {batchPicked.size > 0 && (
+              <Button size="compact-xs" variant="subtle" onClick={() => setBatchPicked(new Set())}>선택 해제</Button>
+            )}
+          </Group>
           <ScrollArea style={{ flex: 1 }}>
             <Stack gap={4}>
               {sections.map((s) => (
@@ -212,8 +235,20 @@ export function Model() {
                     {load[s.section_key] === 'error' && <Badge size="xs" color="red">로드 실패</Badge>}
                     <Badge size="xs" color={statusColor(s.status)}>{s.status}</Badge>
                     {AGENT_SECTIONS.includes(s.code) && (
+                      <Checkbox size="xs" color="violet" checked={batchPicked.has(s.section_key)} id={`pick-${s.code}`}
+                        aria-label={`${s.code} 일괄 선택`}
+                        onChange={(e) => {
+                          const on = e.currentTarget.checked;
+                          setBatchPicked((prev) => {
+                            const next = new Set(prev);
+                            if (on) next.add(s.section_key); else next.delete(s.section_key);
+                            return next;
+                          });
+                        }} />
+                    )}
+                    {AGENT_SECTIONS.includes(s.code) && (
                       <Button size="compact-xs" variant="light" color="violet" id={`agent-${s.code}`}
-                        onClick={() => { setAskSection(s); setAskRequest(''); }}>LLM 으로 만들기</Button>
+                        onClick={() => { setBatchOpen(false); setAskSection(s); setAskRequest(''); }}>LLM 으로 만들기</Button>
                     )}
                     <Button size="compact-xs" variant={solo === s.section_key ? 'filled' : 'subtle'}
                       onClick={() => { const next = solo === s.section_key ? null : s.section_key; setSolo(next); viewerRef.current?.solo(next); }}>
@@ -267,16 +302,23 @@ export function Model() {
           </Box>
         </Stack>
       </Paper>
-      <Modal opened={askSection !== null} onClose={() => setAskSection(null)} title={askSection ? `${askSection.label} — LLM 으로 만들기` : ''}>
+      <Modal opened={askSection !== null || batchOpen} onClose={() => { setAskSection(null); setBatchOpen(false); }}
+        title={askSection ? `${askSection.label} — LLM 으로 만들기` : `선택 ${batchPicked.size}개 섹션 — LLM 으로 만들기`}>
         <Stack gap="sm">
-          <Text size="sm">Sonnet 5 가 이 섹션의 빌더 코드를 작성해 실행·채점합니다. 워커(`m3d worker`)가 켜져 있어야 처리됩니다. API 과금이 발생합니다.</Text>
+          <Text size="sm">Sonnet 5 가 각 섹션의 빌더 코드를 작성해 실행·채점합니다. 워커(`m3d worker --poll --drain`)가 켜져 있어야 처리됩니다. API 과금이 발생합니다.</Text>
+          {batchOpen && <Text size="xs" c="dimmed">{[...batchPicked].join(', ')}</Text>}
           <Textarea label="요청 (선택)" placeholder="예: 개구 보강재를 양면에 붙여 줘" value={askRequest} onChange={(e) => setAskRequest(e.currentTarget.value)} autosize minRows={2} />
           <NumberInput label="예산 상한 ($)" description="이 잡을 포함한 stage 누적 지출이 넘으면 호출 없이 실패 처리" value={askBudget} min={0.5} max={50} step={0.5}
             decimalScale={2} onChange={(v) => setAskBudget(typeof v === 'number' ? v : Number(v) || DEFAULT_BUDGET_USD)} id="job-budget-input" />
           <Group justify="flex-end">
-            <Button variant="default" size="xs" onClick={() => setAskSection(null)}>취소</Button>
+            <Button variant="default" size="xs" onClick={() => { setAskSection(null); setBatchOpen(false); }}>취소</Button>
             <Button size="xs" color="violet" id="create-job-button"
-              onClick={() => { if (askSection) void submitJob(askSection, askRequest, null, askBudget); setAskSection(null); }}>잡 생성</Button>
+              onClick={() => {
+                if (askSection) void submitJob(askSection, askRequest, null, askBudget);
+                else void submitBatch([...batchPicked], askRequest, askBudget);
+                setAskSection(null);
+                setBatchOpen(false);
+              }}>잡 생성</Button>
           </Group>
         </Stack>
       </Modal>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AGENT_SECTIONS, DEFAULT_BUDGET_USD, isActive, jobPayload, jobSummary, type JobRow } from './jobs';
+import { AGENT_SECTIONS, DEFAULT_BUDGET_USD, isActive, jobPayload, jobPayloads, jobSummary, type JobRow } from './jobs';
 
 const job = (over: Partial<JobRow>): JobRow => ({
   id: 'j', project_id: 'p', kind: 'model-section', section_key: 'P4P5/DIA', request: '', parent_job_id: null, status: 'queued',
@@ -23,7 +23,10 @@ describe('jobPayload', () => {
     expect(() => jobPayload({ projectId: 'p', sectionKey: 'dia', request: '', parentJobId: null })).toThrow(RangeError);
     expect(() => jobPayload({ projectId: 'p', sectionKey: 'P4P5/DIA', request: 'x'.repeat(2001), parentJobId: null })).toThrow(RangeError);
   });
-  it('M5 는 격벽만', () => { expect(AGENT_SECTIONS).toEqual(['DIA']); });
+  it('M7 은 본체를 뺀 9섹션', () => {
+    expect(AGENT_SECTIONS).toEqual(['DIA', 'SP04', 'HST', 'SLAB', 'BRG', 'FRM', 'RIB', 'CS', 'WG']);
+    expect(AGENT_SECTIONS).not.toContain('BOX');
+  });
   it('기본 예산 5', () => { expect(DEFAULT_BUDGET_USD).toBe(5); });
 });
 
@@ -37,5 +40,18 @@ describe('jobSummary / isActive', () => {
   it('queued/running 만 활성', () => {
     expect(isActive(job({ status: 'queued' }))).toBe(true);
     expect(isActive(job({ status: 'done' }))).toBe(false);
+  });
+});
+
+describe('jobPayloads (일괄)', () => {
+  it('선택 수만큼 행을 만들고 요청·예산을 공통 적용', () => {
+    const rows = jobPayloads({ projectId: 'p', sectionKeys: ['P4P5/SP04', 'P4P5/BRG'], request: ' 개구 ', parentJobId: null, budgetUsd: 28.17 });
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toEqual({ project_id: 'p', kind: 'model-section', section_key: 'P4P5/SP04', request: '개구', parent_job_id: null, budget_usd: 28.17 });
+    expect(rows[1].section_key).toBe('P4P5/BRG');
+  });
+  it('빈 선택·잘못된 키는 RangeError', () => {
+    expect(() => jobPayloads({ projectId: 'p', sectionKeys: [], request: '', parentJobId: null })).toThrow(RangeError);
+    expect(() => jobPayloads({ projectId: 'p', sectionKeys: ['dia'], request: '', parentJobId: null })).toThrow(RangeError);
   });
 });
