@@ -14,6 +14,13 @@ from m3d.model.spec import ModelSpec
 BBOX_TOL_M = 0.005
 
 
+def node_role(code: str, node: str, spec: ModelSpec) -> str | None:
+    """노드 → 부재 역할 라벨(피드백용, M6 잡 2 교훈). DIA: 01·마지막 = 지점 격벽, 나머지 = 일반 격벽."""
+    if code == "DIA" and node.startswith("AB1_S5_DIA") and node[-2:].isdigit():
+        return "지점 격벽" if int(node[-2:]) in (1, spec.diaphragm.n_cell + 1) else "일반 격벽"
+    return None
+
+
 def load_named(glb: Path) -> dict[str, trimesh.Trimesh]:
     return {name: m for name, m, _c in load_nodes(Path(glb))}
 
@@ -51,7 +58,7 @@ def score_section(code: str, agent_glb: Path, spec: ModelSpec, ref_dir: Path, *,
                 o, rf = float(a[idx][i]), float(r[idx][i])
                 if abs(rf - o) > BBOX_TOL_M:
                     axes.append({"axis": ax, "bound": bound, "ours": round(o, 3), "ref": round(rf, 3), "delta_mm": int(round((rf - o) * 1000))})
-        worst_detail.append({"node": w["node"], "ours": [[round(float(v), 3) for v in a[0]], [round(float(v), 3) for v in a[1]]],
+        worst_detail.append({"node": w["node"], "role": node_role(code, w["node"], spec), "ours": [[round(float(v), 3) for v in a[0]], [round(float(v), 3) for v in a[1]]],
                              "ref": [[round(float(v), 3) for v in r[0]], [round(float(v), 3) for v in r[1]]], "axes": axes})
     return {
         "pass": bool(passed),
@@ -74,7 +81,8 @@ def summary(score: dict, attempts: int) -> dict:
 
 
 BBOX_NOTE = "(노드 bbox = 그 노드에 합친 모든 솔리드 — 판+보강재 — 의 전체 범위이며 판 두께가 아니다)"
-PLATE_OK_HINT = "판 두께·위치는 검사를 통과했으니 바꾸지 말 것 — 차이는 판면에 붙는 부속 솔리드(보강재 등)의 유무·방향·돌출 크기에서 난다."
+PLATE_OK_HINT = ("판 두께·위치는 검사를 통과했으니 바꾸지 말 것 — 차이는 판면에 붙는 부속 솔리드(보강재 등)의 유무·방향·돌출 크기에서 난다. "
+                 "돌출량은 spec 의 '돌출[축]' 값이고 두께 t 는 판면 안 방향이다 — 돌출부의 판면 법선 방향 크기를 t 로 두지 않는다.")
 CHAIN_HINT = "판면 정점이 체인 위치 ±10mm 에 없다 — 판 두께 중심(지점 격벽은 받침선 쪽 판면)을 체인 z 에 두고 두께는 스펙값만큼만."
 
 
@@ -101,7 +109,8 @@ def feedback_text(score: dict) -> str:
         lines.append("정답 대비 bbox 편차 상위: " + ", ".join(f"{w['node']} {w['dev_m'] * 1000:.0f}mm" for w in worst[:8]))
     for d in c.get("worst_detail", []):
         for e in d.get("axes", [])[:6]:
-            lines.append(f"  {d['node']}: {e['axis']} {'최대' if e['bound'] == 'max' else '최소'} {e['ours']} → 정답 {e['ref']} — {_delta_phrase(e)}")
+            name = f"{d['node']}({d['role']})" if d.get("role") else d["node"]
+            lines.append(f"  {name}: {e['axis']} {'최대' if e['bound'] == 'max' else '최소'} {e['ours']} → 정답 {e['ref']} — {_delta_phrase(e)}")
     failed = score["section_selfcheck"]["failed"] + score["assembled_selfcheck"]["failed"]
     checks_ok = (score["section_selfcheck"]["fail"] == 0 and score["assembled_selfcheck"]["fail"] == 0 and score["measure"]["FAIL"] == 0)
     if worst and checks_ok:

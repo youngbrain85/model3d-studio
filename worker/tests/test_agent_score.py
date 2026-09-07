@@ -48,10 +48,10 @@ def test_missing_and_shifted_nodes_fail_with_feedback(ref_dir, tmp_path):
     fb = S.feedback_text(sc)
     assert "AB1_S5_DIA26" in fb and "AB1_S5_DIA03" in fb and "20" in fb
     wd = sc["compare"]["worst_detail"]
-    assert wd[0]["node"] == "AB1_S5_DIA03"
+    assert wd[0]["node"] == "AB1_S5_DIA03" and wd[0]["role"] == "일반 격벽"
     assert {(a["axis"], a["bound"], a["delta_mm"]) for a in wd[0]["axes"]} == {("z", "min", -20), ("z", "max", -20)}
     assert "노드 bbox = 그 노드에 합친 모든 솔리드" in fb
-    assert "AB1_S5_DIA03: z 최소" in fb and "정답이 -z 쪽으로 20mm 더 뻗음" in fb and "우리가 +z 쪽으로 20mm 더 뻗음(초과)" in fb
+    assert "AB1_S5_DIA03(일반 격벽): z 최소" in fb and "정답이 -z 쪽으로 20mm 더 뻗음" in fb and "우리가 +z 쪽으로 20mm 더 뻗음(초과)" in fb
     assert "판면 정점이 체인 위치 ±10mm 에 없다" in fb and "바꾸지 말 것" not in fb
     json.dumps(sc)                                                    # 직렬화 가능(JSON 저장용)
 
@@ -61,7 +61,7 @@ def test_feedback_hints_plate_ok_when_checks_pass():
     sc = {"pass": False,
           "compare": {"only_ours": [], "only_ref": [], "common": 26, "bbox_dev_max_m": 0.326, "bbox_dev_over_1mm": 2, "faces_equal": False,
                       "worst": [{"node": "AB1_S5_DIA01", "dev_m": 0.326}],
-                      "worst_detail": [{"node": "AB1_S5_DIA01", "ours": [[-2.239, 15.636, -525.0], [2.239, 19.646, -524.936]],
+                      "worst_detail": [{"node": "AB1_S5_DIA01", "role": "지점 격벽", "ours": [[-2.239, 15.636, -525.0], [2.239, 19.646, -524.936]],
                                         "ref": [[-2.239, 15.636, -525.0], [2.239, 19.646, -524.61]],
                                         "axes": [{"axis": "z", "bound": "max", "ours": -524.936, "ref": -524.61, "delta_mm": 326}]}]},
           "section_selfcheck": {"pass": 5, "fail": 0, "failed": []}, "assembled_selfcheck": {"pass": 24, "fail": 0, "failed": []},
@@ -69,5 +69,6 @@ def test_feedback_hints_plate_ok_when_checks_pass():
     fb = S.feedback_text(sc)
     assert fb.splitlines()[0] == "채점: FAIL"
     assert "(노드 bbox = 그 노드에 합친 모든 솔리드 — 판+보강재 — 의 전체 범위이며 판 두께가 아니다)" in fb
-    assert "  AB1_S5_DIA01: z 최대 -524.936 → 정답 -524.61 — 정답이 +z 쪽으로 326mm 더 뻗음" in fb
+    assert "  AB1_S5_DIA01(지점 격벽): z 최대 -524.936 → 정답 -524.61 — 정답이 +z 쪽으로 326mm 더 뻗음" in fb
+    assert "돌출량은 spec 의 '돌출[축]' 값" in fb
     assert "판 두께·위치는 검사를 통과했으니 바꾸지 말 것" in fb and "체인 위치 ±10mm 에 없다" not in fb
