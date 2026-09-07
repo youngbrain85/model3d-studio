@@ -116,3 +116,23 @@ def test_diaphragm_and_bearing_fields_carry_descriptions():
     assert "[x 방향]" in vs and "경간 안쪽 z" in vs and "[A4]" in vs
     assert "t 두께[x]" in jk and "h 높이[y]" in jk
     assert "+z 면에만" in os_ and "[A5]" in os_
+
+
+def test_every_submodel_field_carries_a_description():
+    """프롬프트 스펙 발췌의 doc 은 전 섹션에 필요하다(M7 D4)."""
+    missing = []
+    for key, f in ModelSpec.model_fields.items():
+        sub = getattr(f.annotation, "model_fields", None)
+        if not sub:
+            continue
+        missing += [f"{key}.{n}" for n, sf in sub.items() if not sf.description]
+    assert missing == [], f"description 없는 필드: {missing}"
+
+
+def test_tuple_fields_name_the_axis_each_component_extends():
+    """튜플 필드는 성분마다 뻗는 축을 밝힌다 — M6 에서 '돌출 vs 두께' 오독의 해법."""
+    from m3d.model.spec import SP04, Bearing, Slab, WG
+    for model, field in ((SP04, "tf"), (SP04, "bf"), (SP04, "web"), (Bearing, "sole"),
+                         (Bearing, "mortar"), (Bearing, "block"), (Slab, "barrier"), (WG, "knee")):
+        d = model.model_fields[field].description
+        assert any(ax in d for ax in ("[x]", "[y]", "[z]")), f"{model.__name__}.{field} 축 표기 없음: {d}"
