@@ -69,17 +69,25 @@ def test_section_bundle_composes_system_and_user_with_feedback(tmp_path):
     img = tmp_path / "c.png"
     Image.new("RGB", (600, 400), "white").save(img)
     crops = [{"ord": "C13", "page_no": 1, "path": img, "items": [{"item": "CL 다이아프램 규격", "value": "DIAP 10x4500x3739", "status": "확정"}]}]
+    crit_img = tmp_path / "dia01_side.png"
+    Image.new("RGB", (500, 900), "white").save(crit_img)
+    critique = [{"path": crit_img, "caption": "이전 시도 DIA01 측면 — +x 에서, 화면 좌 = +z(경간 안쪽)"}]
     b = C.section_bundle("P4P5/DIA", spec_dict=ModelSpec().model_dump(), sources=SOURCES, evidence=[], crops=crops,
-                         feedback="only_ref: AB1_S5_DIA26", request="개구를 1.4×1.4 로", prev_code="def build_section(spec, ctx):\n    return {}")
+                         feedback="only_ref: AB1_S5_DIA26", request="개구를 1.4×1.4 로", critique=critique, prev_code="def build_section(spec, ctx):\n    return {}")
     assert "build_section(spec, ctx)" in b["system"] and "AB1_S5_DIA01" in b["system"] and "전역 체인" in b["system"]
     assert "geom.paint" in b["system"] and "y_web_top(z)" in b["system"]
     parts = b["messages"][0]["content"]
     kinds = [p["type"] for p in parts]
-    assert kinds.count("image") == 1 and b["n_images"] == 1
+    assert kinds.count("image") == 2 and b["n_images"] == 2
     text = "\n".join(p["text"] for p in parts if p["type"] == "text")
     assert '"source": "ssot:C01/다이아프램 간격"' in text and "참조 차용" in text
     assert '"doc": "(t 두께[x]' in text and "출처·의미 표시용" in b["system"] and "doc 은 필드 의미" in text
     assert "이전 시도" in text and "only_ref: AB1_S5_DIA26" in text and "개구를 1.4×1.4 로" in text
+    assert "이전 시도 결과 렌더(자기검토용)" in text and "렌더: 이전 시도 DIA01 측면" in text
+    assert text.index("이전 시도의 실행 오류·채점") < text.index("이전 시도 결과 렌더(자기검토용)") < text.index("사용자 요청")
+    b3 = C.section_bundle("P4P5/DIA", spec_dict=ModelSpec().model_dump(), sources=SOURCES, evidence=[], crops=crops,
+                          feedback="only_ref: AB1_S5_DIA26", request="개구를 1.4×1.4 로", prev_code="x")
+    assert b3["digest"] != b["digest"] and b3["n_images"] == 1
     assert len(b["digest"]) == 64
     b2 = C.section_bundle("P4P5/DIA", spec_dict=ModelSpec().model_dump(), sources=SOURCES, evidence=[], crops=crops)
     assert b2["digest"] != b["digest"] and "이전 시도" not in "\n".join(p["text"] for p in b2["messages"][0]["content"] if p["type"] == "text")

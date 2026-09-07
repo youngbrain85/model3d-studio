@@ -11,6 +11,7 @@ from pathlib import Path
 
 from m3d.agent import context as agent_context
 from m3d.agent import crops as agent_crops
+from m3d.agent import critique as agent_critique
 from m3d.agent import sandbox
 from m3d.agent import score as agent_score
 from m3d.agent.schema import AgentOut, validate_agent_out
@@ -108,10 +109,11 @@ def _default_publisher(cfg, dataset, *, out_dir, kind, force):
 
 
 def run_job(cfg: Config, dataset: str, job: dict, emit, *, llm=None, scorer=None, publisher=None, evidence=None, crops=None,
-            ref_dir=None, do_render: bool = True) -> dict:
+            ref_dir=None, critic=None, do_render: bool = True) -> dict:
     llm = llm or real_llm
     scorer = scorer or agent_score.score_section
     publisher = publisher or _default_publisher
+    critic = critic or agent_critique.render_views
     segment, code = job["section_key"].split("/")
     pattern = agent_crops.SECTION_PATTERNS.get(code)
     if pattern is None:
@@ -134,7 +136,7 @@ def run_job(cfg: Config, dataset: str, job: dict, emit, *, llm=None, scorer=None
     if job.get("parent_job_id"):
         p = model_io.model_dir(cfg, dataset) / "agent" / str(job["parent_job_id"]) / "agent" / "code.py"
         prev_code = p.read_text(encoding="utf-8") if p.is_file() else None
-    feedback, attempts, cost, last, bundle = None, [], 0.0, None, None
+    feedback, critique, attempts, cost, last, bundle = None, None, [], 0.0, None, None
     budget = float(job.get("budget_usd") or cfg.model_agent_budget_usd)
     for attempt in range(1, MAX_ATTEMPTS + 1):
         spent = spent_usd(cfg, dataset)
@@ -142,7 +144,7 @@ def run_job(cfg: Config, dataset: str, job: dict, emit, *, llm=None, scorer=None
             emit("error", f"예산 상한: 누적 ${spent:.2f} + 예상 ${EST_CALL_USD:.2f} > ${budget:.2f}")
             return {"pass": False, "reason": "budget", "attempts": len(attempts), "cost_usd": cost, "assumptions": [], "questions": []}
         bundle = agent_context.section_bundle(job["section_key"], spec_dict=spec.model_dump(), sources=sources, evidence=evidence,
-                                              crops=crops, feedback=feedback, request=job.get("request") or "", prev_code=prev_code)
+                                              crops=crops, feedback=feedback, request=job.get("request") or "", prev_code=prev_code, critique=critique)
         emit("info", f"시도 {attempt}/{MAX_ATTEMPTS}: LLM 호출(이미지 {bundle['n_images']}장)")
         out, usage = llm(cfg, dataset, bundle, {"job_id": str(job["id"]), "attempt": attempt, "section": job["section_key"]})
         cost += float(usage.get("cost_usd") or 0.0)
@@ -152,6 +154,7 @@ def run_job(cfg: Config, dataset: str, job: dict, emit, *, llm=None, scorer=None
         if not res.ok:
             feedback = "실행 오류:\n" + res.error
             attempts.append({"attempt": attempt, "ok": False, "error": res.error[:2000], "cost_usd": usage.get("cost_usd")})
+            critique = None
             emit("warn", f"시도 {attempt}: 실행 실패 — {res.error.splitlines()[0][:160]}")
             continue
         sc = scorer(code, res.glb, spec, ref_dir, work_dir=work / f"score{attempt}")
@@ -164,6 +167,10 @@ def run_job(cfg: Config, dataset: str, job: dict, emit, *, llm=None, scorer=None
         if sc["pass"]:
             break
         feedback = agent_score.feedback_text(sc)
+        critique = critic(res.glb, spec, code, work / "agent" / f"critique{attempt}")
+        if critique:
+            attempts[-1]["critique"] = [Path(c["path"]).name for c in critique]
+        emit("info", f"시도 {attempt}: 자기 렌더 {len(critique)}장")
     (work / "agent" / "attempts.json").write_text(json.dumps(attempts, ensure_ascii=False, indent=2), encoding="utf-8")
     if last is None:
         emit("error", "모든 시도가 실행에 실패했다")

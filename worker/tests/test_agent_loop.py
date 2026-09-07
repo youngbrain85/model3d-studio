@@ -92,6 +92,10 @@ def test_loop_retries_with_feedback_then_passes_and_builds_agent_dir(cfg, ref_di
     assert abs(r["cost_usd"] - 0.3) < 1e-9 and r["assumptions"] == ["가정1"] and r["questions"] == ["질문1"]
     assert "실행 오류" in calls[1]["text"] and "ZeroDivisionError" in calls[1]["text"]          # 1차 실행 오류 → 2차 피드백
     assert "AB1_S5_DIA26" in calls[2]["text"] and "이전 시도 코드" in calls[2]["text"]           # 2차 채점 실패 → 3차 피드백
+    assert calls[1]["n_images"] == 0 and calls[2]["n_images"] == 3                    # 실행 오류 뒤엔 렌더 없음, 채점 실패 뒤엔 3장
+    assert "이전 시도 결과 렌더(자기검토용)" in calls[2]["text"] and "렌더: 이전 시도 DIA01 측면" in calls[2]["text"]
+    crit_dir = cfg.derived_dir / "ds" / "model" / "agent" / "job-1" / "agent" / "critique2"
+    assert sorted(p.name for p in crit_dir.glob("*.png")) == ["dia01_front.png", "dia01_side.png", "dia13_iso.png"]
     out_dir = pub["out_dir"]
     assert pub["kind"] == "agent" and pub["force"] is True
     assert sorted(p.name for p in (out_dir / "sections" / "P4P5").glob("*.glb")) == sorted(f"{c}.glb" for c in X.CODES)
@@ -102,6 +106,7 @@ def test_loop_retries_with_feedback_then_passes_and_builds_agent_dir(cfg, ref_di
     assert (agent / "code.py").read_text(encoding="utf-8") == GOOD and (agent / "prompt.md").is_file()
     attempts = json.loads((agent / "attempts.json").read_text(encoding="utf-8"))
     assert [a["ok"] for a in attempts] == [False, True, True] and [a.get("pass") for a in attempts] == [None, False, True]
+    assert "critique" not in attempts[0] and attempts[1]["critique"] == ["dia01_front.png", "dia01_side.png", "dia13_iso.png"] and "critique" not in attempts[2]
     assert json.loads((agent / "score.json").read_text(encoding="utf-8"))["summary"]["attempts"] == 3
     assert (out_dir / "AB1_P4P5.glb").is_file() and (out_dir / "selfcheck_sections.json").is_file() and (out_dir / "measure.json").is_file()
     assert [lv for lv, _ in events].count("warn") >= 1 and events[-1][0] == "info"

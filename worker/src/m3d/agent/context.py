@@ -85,7 +85,8 @@ def spec_excerpt(spec_dict: dict, sources: dict) -> dict:
     return out
 
 def section_bundle(section_key: str, *, spec_dict: dict, sources: dict, evidence: list[dict], crops: list[dict],
-                   feedback: str | None = None, request: str = "", prev_code: str | None = None) -> dict:
+                   feedback: str | None = None, request: str = "", prev_code: str | None = None,
+                   critique: list[dict] | None = None) -> dict:
     segment, code = section_key.split("/")
     kb = kb_excerpt(KB_PATH.read_text(encoding="utf-8")) if KB_PATH.is_file() else ""
     system = "\n\n".join([ROLE, "## 모델링 규칙(지식베이스 발췌)", kb, toolkit_doc(), CTX_DOC, CODE_CONTRACT, OUTPUT_FORMAT])
@@ -106,6 +107,12 @@ def section_bundle(section_key: str, *, spec_dict: dict, sources: dict, evidence
         parts.append({"type": "text", "text": "이전 시도 코드:\n```python\n" + prev_code[-12000:] + "\n```"})
     if feedback:
         parts.append({"type": "text", "text": "이전 시도의 실행 오류·채점(고쳐야 할 것):\n" + feedback[-6000:]})
+    if critique:
+        parts.append({"type": "text", "text": "이전 시도 결과 렌더(자기검토용): 도면 크롭·규칙과 비교해 판면 방향·보강재 돌출 방향과 크기·개구 위치를 "
+                                              "스스로 확인하고 고쳐라. 정답 렌더가 아니라 방금 만든 결과다."})
+        for c in critique:
+            parts.append({"type": "text", "text": "렌더: " + c["caption"]})
+            parts.append(image_block(Path(c["path"])))
     if request:
         parts.append({"type": "text", "text": "사용자 요청: " + request})
     h = hashlib.sha256(system.encode("utf-8"))
@@ -113,4 +120,6 @@ def section_bundle(section_key: str, *, spec_dict: dict, sources: dict, evidence
         h.update((p["text"] if p["type"] == "text" else "img").encode("utf-8"))
     for c in crops:
         h.update(sha256_file(Path(c["path"])).encode("ascii"))
-    return {"system": system, "messages": [{"role": "user", "content": parts}], "digest": h.hexdigest(), "n_images": len(crops)}
+    for c in (critique or []):
+        h.update(sha256_file(Path(c["path"])).encode("ascii"))
+    return {"system": system, "messages": [{"role": "user", "content": parts}], "digest": h.hexdigest(), "n_images": len(crops) + len(critique or [])}
