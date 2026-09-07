@@ -6,7 +6,7 @@ from PIL import Image
 
 from m3d.agent import context as C
 from m3d.agent import crops as K
-from m3d.model.spec import ModelSpec
+from m3d.model.spec import Bearing, Diaphragm, ModelSpec
 from m3d.reading.sheet import PageRef
 
 SOURCES = {"coord.z_p4": "ssot:project.coord_system.datums", "diaphragm.spacing": "ssot:C01/다이아프램 간격",
@@ -54,12 +54,15 @@ def test_toolkit_doc_lists_geom_functions_with_signatures():
     assert "ear_clip" not in doc                        # 내부 함수 제외
 
 
-def test_spec_excerpt_marks_sources_and_limits_fields():
+def test_spec_excerpt_marks_sources_docs_and_limits_fields():
     ex = C.spec_excerpt(ModelSpec().model_dump(), SOURCES)
     assert set(ex) == {"coord", "box", "diaphragm", "bearing"}
-    assert ex["diaphragm"]["spacing"] == {"value": 2.8, "source": "ssot:C01/다이아프램 간격"}
+    assert ex["diaphragm"]["spacing"] == {"value": 2.8, "source": "ssot:C01/다이아프램 간격",
+                                          "doc": Diaphragm.model_fields["spacing"].description}
     assert ex["diaphragm"]["support_t"]["source"].startswith("default:")
-    assert ex["bearing"] == {"x": {"value": 1.55, "source": "default"}}
+    assert ex["diaphragm"]["support_jack"]["doc"].startswith("(t 두께[x]")
+    assert ex["bearing"]["x"] == {"value": 1.55, "source": "default", "doc": Bearing.model_fields["x"].description}
+    assert "doc" not in ex["coord"]["z_p4"]                      # 설명 없는 필드는 키 생략
 
 
 def test_section_bundle_composes_system_and_user_with_feedback(tmp_path):
@@ -75,6 +78,7 @@ def test_section_bundle_composes_system_and_user_with_feedback(tmp_path):
     assert kinds.count("image") == 1 and b["n_images"] == 1
     text = "\n".join(p["text"] for p in parts if p["type"] == "text")
     assert '"source": "ssot:C01/다이아프램 간격"' in text and "참조 차용" in text
+    assert '"doc": "(t 두께[x]' in text and "출처·의미 표시용" in b["system"] and "doc 은 필드 의미" in text
     assert "이전 시도" in text and "only_ref: AB1_S5_DIA26" in text and "개구를 1.4×1.4 로" in text
     assert len(b["digest"]) == 64
     b2 = C.section_bundle("P4P5/DIA", spec_dict=ModelSpec().model_dump(), sources=SOURCES, evidence=[], crops=crops)

@@ -102,3 +102,17 @@ def test_missing_paths_detects_schema_drift_in_nested_lists():
     del stored["wg"]["first_no"]
     assert missing_paths(cur, stored) == ["frame.rows[5].top_flange_t", "wg.first_no"]
     assert missing_paths(cur, ModelSpec().model_dump()) == []
+
+
+from m3d.model.spec import Bearing, Diaphragm
+
+
+def test_diaphragm_and_bearing_fields_carry_descriptions():
+    """프롬프트 발췌가 튜플 필드의 의미(축·방향)를 보여줄 수 있어야 한다(M6 D1)."""
+    for name, f in Diaphragm.model_fields.items():
+        assert f.description, f"Diaphragm.{name} description 없음"
+    assert Bearing.model_fields["x"].description
+    vs, jk, os_ = (Diaphragm.model_fields[k].description for k in ("support_vstiff", "support_jack", "open_stiff"))
+    assert "[x 방향]" in vs and "경간 안쪽 z" in vs and "[A4]" in vs
+    assert "t 두께[x]" in jk and "h 높이[y]" in jk
+    assert "+z 면에만" in os_ and "[A5]" in os_

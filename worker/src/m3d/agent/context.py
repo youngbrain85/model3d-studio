@@ -9,6 +9,7 @@ from pathlib import Path
 
 from m3d.config import REPO_ROOT
 from m3d.model import geom
+from m3d.model.spec import ModelSpec
 from m3d.reading.inputs import image_block
 from m3d.samples.manifest import sha256_file
 
@@ -33,7 +34,7 @@ CODE_CONTRACT = """## 코드 계약
 - 모든 메시는 수밀(loft/extrude/box_prism 결과)이고 `geom.paint(mesh, ctx.COL_STEEL)` 로 색을 입힌다. 접합부는 ctx.INS 만큼 관통 삽입한다(공면 금지).
 - 허용 import: math, numpy, trimesh, m3d.model.geom. 파일·네트워크·다른 모듈 접근 금지. 단위 m, Y-up, 좌표계는 §1 규약.
 - 코드 인자 spec 에는 **값만** 들어 있다: spec["diaphragm"]["spacing"] == 2.8 (float), spec["diaphragm"]["h_table"] == [[2.8, 3.739], ...].
-  아래 'ModelSpec 발췌' 의 {"value", "source"} 포장은 출처 표시용이며 코드에서는 ["value"] 로 접근하지 않는다.
+  아래 'ModelSpec 발췌' 의 {"value", "source", "doc"} 포장은 출처·의미 표시용이며 코드에서는 ["value"] 로 접근하지 않는다. doc 의 [x]·[y]·[z] 는 그 성분이 뻗는 축이다.
 - 반복 판(격벽 등)은 두께 중심을 전역 체인 위치 z = z_p4 + k·간격 에 두고 판면은 두께의 절반(±t/2)만 z 로 뻗는다.
   INS 관통 삽입은 상·하판·웹과 만나는 y·x 방향 접합에만 쓴다(z 로 판 두께를 키우지 않는다). 검증기는 체인 위치 ±10mm 안에 판면 정점이 있는지 본다.
 - 지점 격벽(받침선 위, 01·26)은 판 자체 외에 도면의 수직보강재·잭업보강재를 경간 안쪽 면에 별도 솔리드로 붙여 같은 노드에 합친다(trimesh.util.concatenate).
@@ -63,13 +64,25 @@ def toolkit_doc() -> str:
     return "\n".join(lines)
 
 
-def spec_excerpt(spec_dict: dict, sources: dict) -> dict:
-    out = {}
-    for sec in SPEC_SECTIONS:
-        out[sec] = {k: {"value": v, "source": sources.get(f"{sec}.{k}", "default")} for k, v in spec_dict[sec].items()}
-    out["bearing"] = {"x": {"value": spec_dict["bearing"]["x"], "source": sources.get("bearing.x", "default")}}
-    return out
+def _field_doc(sec: str, key: str) -> str | None:
+    """ModelSpec 하위 모델의 Field description — 프롬프트 발췌의 doc(M6 D1)."""
+    sub = ModelSpec.model_fields[sec].annotation
+    f = getattr(sub, "model_fields", {}).get(key)
+    return f.description if f is not None else None
 
+
+def _entry(sec: str, key: str, value, sources: dict) -> dict:
+    entry = {"value": value, "source": sources.get(f"{sec}.{key}", "default")}
+    doc = _field_doc(sec, key)
+    if doc:
+        entry["doc"] = doc
+    return entry
+
+
+def spec_excerpt(spec_dict: dict, sources: dict) -> dict:
+    out = {sec: {k: _entry(sec, k, v, sources) for k, v in spec_dict[sec].items()} for sec in SPEC_SECTIONS}
+    out["bearing"] = {"x": _entry("bearing", "x", spec_dict["bearing"]["x"], sources)}
+    return out
 
 def section_bundle(section_key: str, *, spec_dict: dict, sources: dict, evidence: list[dict], crops: list[dict],
                    feedback: str | None = None, request: str = "", prev_code: str | None = None) -> dict:
@@ -79,7 +92,7 @@ def section_bundle(section_key: str, *, spec_dict: dict, sources: dict, evidence
     ex = spec_excerpt(spec_dict, sources)
     parts: list[dict] = [
         {"type": "text", "text": f"섹션 {section_key} (구간 {segment}, 부재그룹 {code}). 이 섹션의 모든 노드를 만드는 build_section 을 작성하라."},
-        {"type": "text", "text": "ModelSpec 발췌 (m 단위; source 가 ssot: 이면 판독 확정값, default 는 참조 차용 — 도면으로 확인할 것):\n"
+        {"type": "text", "text": "ModelSpec 발췌 (m 단위; source 가 ssot: 이면 판독 확정값, default 는 참조 차용 — 도면으로 확인할 것; doc 은 필드 의미):\n"
                                  + json.dumps(ex, ensure_ascii=False)},
     ]
     if evidence:

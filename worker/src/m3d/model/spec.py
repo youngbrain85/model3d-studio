@@ -50,24 +50,35 @@ class Box(BaseModel):
 
 
 class Diaphragm(BaseModel):
-    """§2 격벽 26면 — P4 + spacing·k."""
-    spacing: float = 2.8
-    n_cell: int = 25
-    support_t: float = 0.038
-    support_open: tuple[float, float] = (0.7, 0.7)
-    support_sill: float = 0.45
-    support_vstiff: tuple[float, float, int] = (0.026, 0.24, 12)
-    support_jack: tuple[float, float, float] = (0.022, 0.35, 1.15)
-    interior_t: float = 0.010
-    interior_open: tuple[float, float] = (1.4, 1.4)
-    sill_cl: float = 0.45
-    sill_cx: float = 0.40
-    h_table: list[tuple[float, float]] = [(2.8, 3.739), (5.6, 3.349), (8.4, 3.063),
-                                          (11.2, 2.881), (14.0, 2.803)]
-    type_map: list[tuple[float, str]] = [(2.8, "CL"), (5.6, "CL3"), (8.4, "CL6"), (11.2, "CL7"),
-                                         (14.0, "CX"), (16.8, "CX1"), (19.6, "CX1"), (22.4, "CX1")]
-    open_stiff: tuple[float, float, float, float] = (0.010, 0.100, 0.090, 1.56)
-
+    """§2 격벽 26면 — P4 + spacing·k. description 은 에이전트 프롬프트의 스펙 발췌 doc 이 된다(M6 D1)."""
+    spacing: float = Field(2.8, description="격벽 간격(m) — 전역 체인 z = z_p4 + k·spacing")
+    n_cell: int = Field(25, description="격실 수 — 격벽 수 = n_cell + 1 (01 = P4 받침선, 마지막 = P5 받침선)")
+    support_t: float = Field(0.038, description="지점 격벽(01·마지막) 판 두께(m, z 방향) — 판면 한쪽이 받침선 z 에 놓이고 두께는 경간 안쪽으로")
+    support_open: tuple[float, float] = Field((0.7, 0.7), description="(폭 x, 높이 y) 지점 격벽 개구(m), 개구는 x 중심")
+    support_sill: float = Field(0.45, description="지점 격벽 개구 문턱 높이(m) — 하판 상면 y_web_bot(z) 기준")
+    support_vstiff: tuple[float, float, int] = Field(
+        (0.026, 0.24, 12),
+        description="(t 두께[x 방향], w 돌출[판면에서 경간 안쪽 z], n 총 개수) 지점 격벽 수직보강재 — 내공 전 높이; "
+                    "참조 단순화 [A4]: 경간 안쪽 면에만 받침 x·x±0.2 의 3열 × 좌우 = 6")
+    support_jack: tuple[float, float, float] = Field(
+        (0.022, 0.35, 1.15),
+        description="(t 두께[x], w 돌출[판면에서 경간 안쪽 z], h 높이[y]) 지점 격벽 잭업보강재 — 받침 x 직상(상판 밑 h)·직하(하판 위 h) 각 1 × 좌우 = 4, "
+                    "경간 안쪽 면에만")
+    interior_t: float = Field(0.010, description="일반 격벽 판 두께(m, z) — 두께 중심을 체인 위치에")
+    interior_open: tuple[float, float] = Field((1.4, 1.4), description="(폭 x, 높이 y) 일반 격벽 개구(m), x 중심")
+    sill_cl: float = Field(0.45, description="CL 계열 일반 격벽 개구 문턱(m, y_web_bot 기준)")
+    sill_cx: float = Field(0.40, description="CX 계열 일반 격벽 개구 문턱(m)")
+    h_table: list[tuple[float, float]] = Field(
+        [(2.8, 3.739), (5.6, 3.349), (8.4, 3.063), (11.2, 2.881), (14.0, 2.803)],
+        description="(받침선으로부터 거리 d, 격벽 높이) 판독 대조값 — 판 높이는 ctx 내공(y_web_bot~y_web_top)에서 유도하고 이 표는 검산용")
+    type_map: list[tuple[float, str]] = Field(
+        [(2.8, "CL"), (5.6, "CL3"), (8.4, "CL6"), (11.2, "CL7"), (14.0, "CX"), (16.8, "CX1"), (19.6, "CX1"), (22.4, "CX1")],
+        description="(받침선으로부터 거리 d, 타입명) — dmin = 양 받침선까지 최소 거리; CX 로 시작하는 타입의 d 범위(min−0.1 < dmin < max+0.1) 이면 sill_cx, "
+                    "아니면 sill_cl")
+    open_stiff: tuple[float, float, float, float] = Field(
+        (0.010, 0.100, 0.090, 1.56),
+        description="(t 판두께, h_h 상·하변 돌출[z], h_v 좌·우변 돌출[z], l 길이) 일반 격벽 개구보강재 — 개구 4변 바깥에 붙여 판의 +z 면에만 돌출(참조 단순화 [A5]); "
+                    "상·하변은 x 중심 길이 l·두께 t 를 y 로, 좌·우변은 y 중심 길이 l·두께 t 를 x 로")
 
 class FrameRow(BaseModel):
     d_list: list[float]
@@ -173,7 +184,7 @@ class SP04(BaseModel):
 
 class Bearing(BaseModel):
     """§10 받침 4기."""
-    x: float = 1.55
+    x: float = Field(1.55, description="받침 중심 x(m) — 좌우 대칭 ±x")
     kind: str = "isolation"             # [Q4] 면진(잠정)
     sole: tuple[float, float, float, float] = (1.37, 0.022, 0.054, 0.038)
     body_h: float = 0.337
