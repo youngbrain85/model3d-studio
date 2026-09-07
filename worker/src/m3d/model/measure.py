@@ -553,6 +553,10 @@ def sec_sp04(W, E: Expect, ck: Checks, out: dict):
            E.bot_out(zj - sp.bf[1] / 2) - sp.bf[2], float(bf.bounds[0][1]), TOL, "m")
     ck.add("복부판 외면 x (§9 웹 외면 %g + 두께 %s)" % (E.s.box.x_web, _fmt(sp.web[2] * 1000)),
            -(E.s.box.x_web + sp.web[2]), float(wb.bounds[0][0]), TOL, "m")
+    ck.add("복부판 y 중심 (§9 내공 중앙)", (E.web_top(zj) + E.web_bot(zj)) / 2,
+           float((wb.bounds[0][1] + wb.bounds[1][1]) / 2), 0.02, "m")
+    ck.add("복부판 높이 (§9 %s)" % _fmt(sp.web[0] * 1000), sp.web[0] * 1000.0,
+           float(wb.bounds[1][1] - wb.bounds[0][1]) * 1000.0, 20.0, "mm")
 
 
 def sec_hstiff(W, E: Expect, ck: Checks, out: dict):

@@ -655,6 +655,30 @@ def publish_model(
     raise typer.Exit(code=1 if r["failures"] else 0)
 
 
+@app.command("verify-rule")
+def verify_rule_cmd(
+    dataset: str = typer.Option("ab1-p4p5", "--dataset"),
+) -> None:
+    """[13] 회귀 검증 — 기존 에이전트 산출에 정답 무관 합격 규칙을 돌려 혼동표를 낸다 (M8 D6). 무과금."""
+    from m3d.model import verify_rule
+    cfg = load_config()
+    r = verify_rule.run_rule(cfg, dataset)
+    typer.echo("총 %d건" % r["총건수"])
+    typer.echo("%-10s %6s %8s" % ("정답편차", "합격", "불합격"))
+    for b, v in r["matrix"].items():
+        typer.echo("%-10s %6d %8d" % (b, v["합격"], v["불합격"]))
+    for label, key in (("거짓 합격(크게 틀렸는데 통과)", "false_pass"), ("거짓 불합격(맞는데 탈락)", "false_fail")):
+        if r[key]:
+            typer.echo("")
+            typer.echo("%s %d건:" % (label, len(r[key])))
+            for row in r[key]:
+                typer.echo("  %s %-5s dev=%s · 건전성 %s · 섹션 %s · 결합 %s · 재실측 %s %s"
+                           % (row["job_id"][:8], row["code"], row["bbox_dev_m"], row.get("sanity_fail"),
+                              row.get("section_fail"), row.get("assembled_fail"), row.get("measure_section_fail"),
+                              (row.get("measure_failed") or [""])[0][:60]))
+    raise typer.Exit(code=1 if r["false_pass"] else 0)
+
+
 @app.command("agent-assemble")
 def agent_assemble(
     dataset: str = typer.Option("ab1-p4p5", "--dataset"),
