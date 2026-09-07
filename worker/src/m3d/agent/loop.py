@@ -126,6 +126,7 @@ def run_job(cfg: Config, dataset: str, job: dict, emit, *, llm=None, scorer=None
     if not all((ref_dir / "sections" / segment / f"{c}.glb").is_file() for c in sections.CODES):
         emit("error", "정답 섹션 GLB 없음 — `m3d build` 먼저")
         return {"pass": False, "reason": "no_reference", "attempts": 0, "cost_usd": 0.0, "assumptions": [], "questions": []}
+    node_list = agent_sections_meta.node_names(ref_dir, segment, code)     # 계약에 싣는 노드명(M7 D3)
     work = model_io.model_dir(cfg, dataset) / "agent" / str(job["id"])
     (work / "agent").mkdir(parents=True, exist_ok=True)
     if evidence is None:
@@ -145,7 +146,7 @@ def run_job(cfg: Config, dataset: str, job: dict, emit, *, llm=None, scorer=None
             emit("error", f"예산 상한: 누적 ${spent:.2f} + 예상 ${EST_CALL_USD:.2f} > ${budget:.2f}")
             return {"pass": False, "reason": "budget", "attempts": len(attempts), "cost_usd": cost, "assumptions": [], "questions": []}
         bundle = agent_context.section_bundle(job["section_key"], spec_dict=spec.model_dump(), sources=sources, evidence=evidence,
-                                              crops=crops, feedback=feedback, request=job.get("request") or "", prev_code=prev_code, critique=critique)
+                                              crops=crops, feedback=feedback, request=job.get("request") or "", prev_code=prev_code, critique=critique, node_list=node_list)
         emit("info", f"시도 {attempt}/{MAX_ATTEMPTS}: LLM 호출(이미지 {bundle['n_images']}장)")
         out, usage = llm(cfg, dataset, bundle, {"job_id": str(job["id"]), "attempt": attempt, "section": job["section_key"]})
         cost += float(usage.get("cost_usd") or 0.0)

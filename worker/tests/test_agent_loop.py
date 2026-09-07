@@ -90,6 +90,7 @@ def test_loop_retries_with_feedback_then_passes_and_builds_agent_dir(cfg, ref_di
                   evidence=[], crops=[], ref_dir=ref_dir, do_render=False)
     assert r["pass"] is True and r["attempts"] == 3 and r["build_version"] == 7 and r["build_id"] == "b-7"
     assert abs(r["cost_usd"] - 0.3) < 1e-9 and r["assumptions"] == ["가정1"] and r["questions"] == ["질문1"]
+    assert "AB1_S5_DIA26" in calls[0]["text"] and "정확히 이 이름들만" in calls[0]["text"]   # 노드명 목록이 첫 호출부터
     assert "실행 오류" in calls[1]["text"] and "ZeroDivisionError" in calls[1]["text"]          # 1차 실행 오류 → 2차 피드백
     assert "AB1_S5_DIA26" in calls[2]["text"] and "이전 시도 코드" in calls[2]["text"]           # 2차 채점 실패 → 3차 피드백
     assert calls[1]["n_images"] == 0 and calls[2]["n_images"] == 3                    # 실행 오류 뒤엔 렌더 없음, 채점 실패 뒤엔 3장

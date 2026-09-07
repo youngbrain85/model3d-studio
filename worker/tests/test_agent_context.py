@@ -62,7 +62,7 @@ def test_spec_excerpt_marks_sources_docs_and_limits_fields():
     assert ex["diaphragm"]["support_t"]["source"].startswith("default:")
     assert ex["diaphragm"]["support_jack"]["doc"].startswith("(t 두께[x]")
     assert ex["bearing"]["x"] == {"value": 1.55, "source": "default", "doc": Bearing.model_fields["x"].description}
-    assert "doc" not in ex["coord"]["z_p4"]                      # 설명 없는 필드는 키 생략
+    assert "doc" not in C._entry("coord", "없는필드", 1.0, {})     # 설명 없는 필드는 키 생략
 
 
 def test_section_bundle_composes_system_and_user_with_feedback(tmp_path):
@@ -74,7 +74,8 @@ def test_section_bundle_composes_system_and_user_with_feedback(tmp_path):
     critique = [{"path": crit_img, "caption": "이전 시도 DIA01 측면 — +x 에서, 화면 좌 = +z(경간 안쪽)"}]
     b = C.section_bundle("P4P5/DIA", spec_dict=ModelSpec().model_dump(), sources=SOURCES, evidence=[], crops=crops,
                          feedback="only_ref: AB1_S5_DIA26", request="개구를 1.4×1.4 로", critique=critique, prev_code="def build_section(spec, ctx):\n    return {}")
-    assert "build_section(spec, ctx)" in b["system"] and "AB1_S5_DIA01" in b["system"] and "전역 체인" in b["system"]
+    assert "build_section(spec, ctx)" in b["system"] and "전역 체인" in b["system"]
+    assert "정확히" in b["system"] and "객체 DB 연결 키" in b["system"]      # 노드명은 계약이 아니라 섹션 블록에서 온다(M7 D3)
     assert "geom.paint" in b["system"] and "y_web_top(z)" in b["system"]
     parts = b["messages"][0]["content"]
     kinds = [p["type"] for p in parts]
@@ -108,3 +109,33 @@ def test_section_patterns_come_from_meta_and_hst_has_none():
     assert K2.SECTION_PATTERNS["DIA"] == M.SECTIONS["DIA"].pattern
     assert set(K2.SECTION_PATTERNS) == {c for c, m in M.SECTIONS.items() if m.pattern}
     assert "HST" not in K2.SECTION_PATTERNS
+
+
+def test_spec_excerpt_picks_section_keys_plus_common():
+    """섹션마다 필요한 하위 모델만 싣는다 — 프롬프트가 커지면 중요한 값이 묻힌다(M7 3.3)."""
+    d = ModelSpec().model_dump()
+    ex_sp04 = C.spec_excerpt(d, SOURCES, code="SP04")
+    assert set(ex_sp04) == {"coord", "box", "sp04"}
+    ex_cs = C.spec_excerpt(d, SOURCES, code="CS")
+    assert set(ex_cs) == {"coord", "box", "cs", "wg"}          # 외측빔은 가로보 기하에서 위치를 잡는다
+    assert set(C.spec_excerpt(d, SOURCES, code="DIA")) == {"coord", "box", "diaphragm", "bearing"}
+    assert set(C.spec_excerpt(d, SOURCES)) == {"coord", "box", "diaphragm", "bearing"}   # 기본은 격벽(하위호환)
+    assert ex_sp04["sp04"]["tf"]["doc"].startswith("(w 폭[x]")
+
+
+def test_section_block_lists_every_node_and_roles():
+    names = ["AB1_S5_SP04_BF", "AB1_S5_SP04_TF", "AB1_S5_SP04_WEB_L", "AB1_S5_SP04_WEB_R"]
+    block = C.section_block("SP04", names)
+    assert "정확히 이 이름들만" in block and "(4개)" in block
+    for n in names:
+        assert n in block
+    assert "상면판" in block and "복부판" in block
+
+
+def test_bundle_carries_section_nodes_and_new_ctx_doc():
+    b = C.section_bundle("P4P5/SP04", spec_dict=ModelSpec().model_dump(), sources={}, evidence=[], crops=[],
+                         node_list=["AB1_S5_SP04_BF", "AB1_S5_SP04_TF", "AB1_S5_SP04_WEB_L", "AB1_S5_SP04_WEB_R"])
+    text = "\n".join(p["text"] for p in b["messages"][0]["content"] if p["type"] == "text")
+    assert "AB1_S5_SP04_WEB_R" in text and "정확히 이 이름들만" in text
+    assert "ctx.y_deck_top(z)" in b["system"] and "ctx.zone_loft(" in b["system"] and "ctx.COL_CONC" in b["system"]
+    assert "AB1_S5_DIA01 … AB1_S5_DIA26" not in b["system"]        # 격벽 전용 문장이 계약에서 빠졌다
