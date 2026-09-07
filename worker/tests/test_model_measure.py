@@ -118,3 +118,44 @@ def test_every_measure_row_carries_a_section_tag(ref_glb, spec):
     agg = r["섹션별"]
     assert agg["DIA"]["PASS"] >= 1 and agg["BRG"]["PASS"] >= 1
     assert sum(v["PASS"] + v["FAIL"] + v["INFO"] for v in agg.values()) == len(r["대조"])
+
+
+MIN_ITEMS = {"BOX": 4, "DIA": 4, "FRM": 4, "RIB": 4, "HST": 4, "WG": 4, "CS": 4, "SLAB": 4, "SP04": 4, "BRG": 4}
+
+
+def test_every_section_has_real_coverage(ref_glb, spec):
+    """정답을 빼면 이 항목들만 남는다 — 섹션마다 최소 4개, 합계 75개 이상(M8 ②)."""
+    r = M.run(ref_glb, spec)
+    agg = r["섹션별"]
+
+    def n_of(code):
+        v = agg.get(code, {})
+        return v.get("PASS", 0) + v.get("FAIL", 0) + v.get("INFO", 0)
+    thin = {c: n for c, n in MIN_ITEMS.items() if n_of(c) < n}
+    assert thin == {}, f"항목이 모자란 섹션: {thin}"
+    assert len(r["대조"]) >= 75, len(r["대조"])
+    assert r["집계"]["FAIL"] == 0, [c["항목"] for c in r["대조"] if c["판정"] == "FAIL"]
+
+
+def test_moved_sp04_plate_fails_only_its_section(ref_glb, spec, tmp_path):
+    """이음판 상면판을 20mm 내리면 SP04 항목만 걸린다."""
+    from m3d.agent.score import load_named
+    named = load_named(ref_glb)
+    named["AB1_S5_SP04_TF"].apply_translation([0, -0.02, 0])
+    glb = tmp_path / "moved.glb"
+    Builder(spec).export(named, glb)
+    r = M.run(glb, spec)
+    failed = {c["섹션"] for c in r["대조"] if c["판정"] == "FAIL"}
+    assert failed == {"SP04"}, [(c["섹션"], c["항목"]) for c in r["대조"] if c["판정"] == "FAIL"]
+
+
+def test_moved_wg_bracket_is_caught(ref_glb, spec, tmp_path):
+    """M7 에서 정답 대조로만 잡히던 1.7m 정착대 오류를 재실측이 잡는다."""
+    from m3d.agent.score import load_named
+    named = load_named(ref_glb)
+    for nm in [n for n in named if n.endswith("_BR")]:
+        named[nm].apply_translation([0, 1.688, 0])
+    glb = tmp_path / "wgbr.glb"
+    Builder(spec).export(named, glb)
+    r = M.run(glb, spec)
+    assert "WG" in {c["섹션"] for c in r["대조"] if c["판정"] == "FAIL"}
