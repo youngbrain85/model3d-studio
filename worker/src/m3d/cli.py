@@ -655,6 +655,24 @@ def publish_model(
     raise typer.Exit(code=1 if r["failures"] else 0)
 
 
+@app.command("agent-assemble")
+def agent_assemble(
+    dataset: str = typer.Option("ab1-p4p5", "--dataset"),
+    no_publish: bool = typer.Option(False, "--no-publish", help="업로드 없이 로컬 산출만"),
+) -> None:
+    """[12] 전집 결합 — 섹션마다 통과한 에이전트 산출을 모아 결합 빌드 생성·업로드 (M7 D8). 무과금."""
+    from m3d.model import assemble_agent
+    cfg = load_config()
+    r = assemble_agent.run_assemble(cfg, dataset, publish=not no_publish)
+    typer.echo(f"에이전트 섹션 {r['agent_sections']}/10 · self-check {r['selfcheck']['pass']}/{r['selfcheck']['fail']} · "
+               f"재실측 {r['measure']['PASS']}/{r['measure']['FAIL']}")
+    for code, sec in r["sections"].items():
+        typer.echo(f"  {code:5s} {sec['source']}" + ("" if sec["job_id"] is None else " " + sec["job_id"][:8]))
+    if "publish" in r:
+        typer.echo(f"업로드 b{r['publish']['version']} ({r['publish']['uploaded']} 파일)")
+    raise typer.Exit(code=1 if r["selfcheck"]["fail"] or r["measure"]["FAIL"] else 0)
+
+
 @app.command()
 def worker(
     once: bool = typer.Option(False, "--once", help="잡 1건만 처리하고 종료"),
