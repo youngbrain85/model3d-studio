@@ -22,7 +22,7 @@ ROLE = ("당신은 강상자형교 3D 모델링 에이전트다. 주어진 치�
         "파이썬 빌더 함수를 작성한다. 추정으로 확정하지 말고 가정은 assumptions 에, 확인이 필요한 것은 questions 에 낸다.")
 
 CTX_DOC = """## ctx (본체 기하 — 주어진 조건)
-- ctx.x_web: 웹 외면 x(m, +측). 웹은 x=±x_web 에 있고 두께 ctx.t_web(z) 만큼 안쪽으로 들어온다.
+- ctx.x_web: 웹 외면 x(m, +측). 웹은 x=±x_web 에 있고 두께 ctx.t_web(z) 만큼 안쪽으로 들어온다 → 웹 내면 x = ±(x_web − t_web(z)); 내공 판은 그 내면에 INS 만큼 물린다(반폭 = x_web − t_web(z) + INS).
 - ctx.z_p4, ctx.z_p5: P4·P5 받침선 z(m). 격벽·프레임 같은 반복 부재의 위치는 전역 체인 z = z_p4 + k·간격 에서 유도한다.
 - ctx.y_web_top(z), ctx.y_web_bot(z): 상판 하면 y / 하판 상면 y (내공 경계, m). ctx.h_box(z) = 내공 높이.
 - ctx.t_web(z): 웹 판두께(m). ctx.COL_STEEL: 강재 색 [r,g,b,a]. ctx.INS: 접합부 관통 삽입 5mm.

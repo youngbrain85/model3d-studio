@@ -78,7 +78,7 @@ class Diaphragm(BaseModel):
     open_stiff: tuple[float, float, float, float] = Field(
         (0.010, 0.100, 0.090, 1.56),
         description="(t 판두께, h_h 상·하변 돌출[z], h_v 좌·우변 돌출[z], l 길이) 일반 격벽 개구보강재 — 개구 4변 바깥에 붙여 판의 +z 면에만 돌출(참조 단순화 [A5]); "
-                    "상·하변은 x 중심 길이 l·두께 t 를 y 로, 좌·우변은 y 중심 길이 l·두께 t 를 x 로")
+                    "개구 안으로 들어오지 않는다: 좌·우변은 x = ±폭/2 에서 바깥쪽으로 t(y 중심 길이 l), 상·하변은 문턱 y 아래·개구 상단 y 위로 t(x 중심 길이 l)")
 
 class FrameRow(BaseModel):
     d_list: list[float]
