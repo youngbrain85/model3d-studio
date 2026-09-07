@@ -30,7 +30,7 @@ SECTIONS: dict[str, SectionMeta] = {m.code: m for m in (
                 ((r"DIA(01|26)$", "지점 격벽"), (r"DIA\d\d$", "일반 격벽")),
                 ("diaphragm", "bearing")),
     SectionMeta("SP04", "이음판", r"이음판|SP-?04|현장이음|스플라이스",
-                ("AB1_S5_SP04_TF",),
+                ("AB1_S5_SP04_WEB_L",),
                 ((r"_TF$", "상면판"), (r"_BF$", "하면판"), (r"_WEB_[LR]$", "복부판")),
                 ("sp04",)),
     SectionMeta("HST", "수평보강재", None,
