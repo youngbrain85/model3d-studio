@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { AgentScoreSummary } from '../../../contracts/db.types';
 import { approvalPayload, CODES, latestApprovals, modelObjectKey, targetKey, type ApprovalRow } from './models';
 
 const row = (over: Partial<ApprovalRow>): ApprovalRow => ({
@@ -35,5 +36,17 @@ describe('approvalPayload', () => {
   it('verdict 범위 밖·메모 500자 초과는 RangeError', () => {
     expect(() => approvalPayload({ projectId: 'p', buildId: 'b', sectionId: 's', verdict: '보류' as never })).toThrow(RangeError);
     expect(() => approvalPayload({ projectId: 'p', buildId: 'b', sectionId: 's', verdict: '반려', note: 'x'.repeat(501) })).toThrow(RangeError);
+  });
+});
+
+describe('AgentScoreSummary (M8)', () => {
+  it('정답 무관 필드와 참고용 정답 대조 필드가 함께 온다', () => {
+    const s: AgentScoreSummary = {
+      pass: false, sanity_fail: 1, section_fail: 0, assembled_fail: 0,
+      measure_section_fail: 2, measure_fail: 2, attempts: 3,
+      bbox_dev_max_m: null, only_ours: 0, only_ref: 0,
+    };
+    expect(s.sanity_fail + s.measure_section_fail).toBe(3);
+    expect(s.bbox_dev_max_m).toBeNull();          // 정답 없는 교량
   });
 });

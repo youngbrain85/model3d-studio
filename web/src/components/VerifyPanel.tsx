@@ -71,10 +71,18 @@ export function VerifyPanel({ project, build, sections, selected, renderUrls, do
                 {agent && <Badge size="xs" color={agent.pass ? 'green' : 'red'}>{agent.pass ? 'PASS' : 'FAIL'}</Badge>}
               </Group>
               {agent ? (
-                <Text size="xs">
-                  노드 누락 {agent.only_ref} · 초과 {agent.only_ours} · bbox {agent.bbox_dev_max_m === null ? '-' : `${(agent.bbox_dev_max_m * 1000).toFixed(0)}mm`}
-                  {' '}· 섹션 fail {agent.section_fail} · 결합 fail {agent.assembled_fail} · 재실측 fail {agent.measure_fail ?? '-'} · 시도 {agent.attempts}
-                </Text>
+                <Stack gap={2}>
+                  <Text size="xs">
+                    정답 무관 판정 — 건전성 fail {agent.sanity_fail} · 섹션 fail {agent.section_fail}
+                    {' '}· 결합 fail {agent.assembled_fail} · 재실측 fail {agent.measure_section_fail} · 시도 {agent.attempts}
+                  </Text>
+                  {agent.bbox_dev_max_m !== null && (
+                    <Text size="xs" c="dimmed">
+                      참고: 정답 대조 — 노드 누락 {agent.only_ref} · 초과 {agent.only_ours}
+                      {' '}· bbox {(agent.bbox_dev_max_m * 1000).toFixed(0)}mm
+                    </Text>
+                  )}
+                </Stack>
               ) : <Text size="xs" c="dimmed">채점 정보 없음</Text>}
               {agentResult?.assumptions?.length ? (
                 <>

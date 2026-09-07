@@ -237,8 +237,11 @@ export interface SectionSelfcheck {
 
 // ── M5 보조 타입 (builds.stats.agent / jobs.result 의 jsonb 형식) ──
 export interface AgentScoreSummary {
-  pass: boolean; only_ours: number; only_ref: number; bbox_dev_max_m: number | null;
-  section_fail: number; assembled_fail: number; measure_fail: number | null; attempts: number;
+  // 정답 무관 판정(M8 D4)
+  pass: boolean; sanity_fail: number; section_fail: number; assembled_fail: number;
+  measure_section_fail: number; measure_fail: number | null; attempts: number;
+  // 참고: 정답이 있는 교량에서만 채워진다
+  bbox_dev_max_m: number | null; only_ours: number; only_ref: number;
 }
 export interface JobResult {
   pass: boolean; reason?: string; attempts: number; cost_usd: number; build_version?: number; build_id?: string;
