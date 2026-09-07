@@ -83,3 +83,10 @@ def test_section_bundle_composes_system_and_user_with_feedback(tmp_path):
     assert len(b["digest"]) == 64
     b2 = C.section_bundle("P4P5/DIA", spec_dict=ModelSpec().model_dump(), sources=SOURCES, evidence=[], crops=crops)
     assert b2["digest"] != b["digest"] and "이전 시도" not in "\n".join(p["text"] for p in b2["messages"][0]["content"] if p["type"] == "text")
+
+
+def test_bundle_system_carries_stiffener_conventions_from_kb():
+    """KB §5 의 보강재 규약(M6 D2)이 실제 파일에서 시스템 프롬프트로 들어온다."""
+    b = C.section_bundle("P4P5/DIA", spec_dict=ModelSpec().model_dump(), sources={}, evidence=[], crops=[])
+    assert "보강재 방향 규약" in b["system"] and "편측 부착 단순화" in b["system"]
+    assert "[A4]·[A5]" in b["system"] and "노드 bbox 는 판+보강재 전체 범위" in b["system"]
