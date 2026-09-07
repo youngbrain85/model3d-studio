@@ -169,9 +169,9 @@ def run_job(cfg: Config, dataset: str, job: dict, emit, *, llm=None, scorer=None
         attempts.append({"attempt": attempt, "ok": True, "pass": sc["pass"], "score": agent_score.summary(sc, attempt),
                          "cost_usd": usage.get("cost_usd")})
         last = (out, res, sc)
-        emit("info", f"시도 {attempt}: 채점 {'PASS' if sc['pass'] else 'FAIL'} — 노드 누락 {len(sc['compare']['only_ref'])}·"
-                     f"초과 {len(sc['compare']['only_ours'])}·bbox {(sc['compare']['bbox_dev_max_m'] or 0) * 1000:.0f}mm·"
-                     f"결합 fail {sc['assembled_selfcheck']['fail']}·재실측 fail {sc['measure']['FAIL']}")
+        emit("info", f"시도 {attempt}: 채점 {'PASS' if sc['pass'] else 'FAIL'} — 건전성 fail {sc['sanity']['fail']}·"
+                     f"섹션 fail {sc['section_selfcheck']['fail']}·결합 fail {sc['assembled_selfcheck']['fail']}·"
+                     f"재실측 fail {sc['measure']['section_fail']}")
         if sc["pass"]:
             break
         feedback = agent_score.feedback_text(sc)

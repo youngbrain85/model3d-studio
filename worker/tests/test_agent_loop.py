@@ -66,10 +66,14 @@ def _fake_scorer(passes):
     def scorer(code, glb, spec, ref, *, work_dir):
         seen.append(glb)
         ok = passes[len(seen) - 1]
-        return {"pass": ok, "compare": {"only_ours": [], "only_ref": [] if ok else ["AB1_S5_DIA26"], "common": 25, "bbox_dev_max_m": 0.0 if ok else 0.02,
-                                        "bbox_dev_over_1mm": 0, "faces_equal": ok, "worst": []},
+        return {"pass": ok, "sanity": {"pass": 3, "fail": 0, "checks": []},
+                "reference": {"only_ours": [], "only_ref": [] if ok else ["AB1_S5_DIA26"], "common": 25,
+                              "bbox_dev_max_m": 0.0 if ok else 0.02, "bbox_dev_over_1mm": 0, "faces_equal": ok,
+                              "worst": [], "worst_detail": []},
                 "section_selfcheck": {"pass": 5, "fail": 0, "failed": []}, "assembled_selfcheck": {"pass": 24, "fail": 0, "failed": []},
-                "measure": {"PASS": 47, "FAIL": 0, "INFO": 2, "failed": []}, "assembled_glb": str(work_dir / "assembled.glb")}
+                "measure": {"PASS": 47, "FAIL": 0, "INFO": 2, "section_fail": 0 if ok else 1,
+                            "failed": [] if ok else ["격벽 판 z 위치 26 — 기대 x / 실측 y (허용 0.005)"]},
+                "assembled_glb": str(work_dir / "assembled.glb")}
     return scorer, seen
 
 
