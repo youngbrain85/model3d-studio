@@ -142,3 +142,23 @@ def test_spent_usd_sums_only_stage_rows(cfg):
     p = cfg.derived_dir / "ds" / "usage.jsonl"
     p.write_text('{"stage": "read", "cost_usd": 1.0}\n{"stage": "model-agent", "cost_usd": 0.25}\n{"stage": "model-agent", "cost_usd": 0.5, "cached": true}\n', encoding="utf-8")
     assert abs(L.spent_usd(cfg, "ds") - 0.25) < 1e-9
+
+
+def test_loop_supports_section_without_reading_pattern(cfg, ref_dir, monkeypatch):
+    """HST 는 판독 근거가 없다 — 크롭 없이도 잡이 돌아야 한다(M7 D9)."""
+    llm, calls = _fake_llm([GOOD])
+    scorer, _ = _fake_scorer([True])
+    monkeypatch.setattr(L, "spent_usd", lambda cfg, ds, stage=L.STAGE: 0.0)
+    r = L.run_job(cfg, "ds", _job(section_key="P4P5/HST"), lambda lv, m: None, llm=llm, scorer=scorer,
+                  publisher=_fake_publisher({}), crops=[], ref_dir=ref_dir, do_render=False)
+    assert r.get("reason") != "unsupported_section" and len(calls) == 1
+    assert calls[0]["n_images"] == 0
+
+
+def test_loop_rejects_section_outside_meta(cfg, ref_dir, monkeypatch):
+    """본체(BOX)는 에이전트 대상이 아니다."""
+    llm, calls = _fake_llm([GOOD])
+    monkeypatch.setattr(L, "spent_usd", lambda cfg, ds, stage=L.STAGE: 0.0)
+    r = L.run_job(cfg, "ds", _job(section_key="P4P5/BOX"), lambda lv, m: None, llm=llm, evidence=[], crops=[],
+                  ref_dir=ref_dir, do_render=False)
+    assert r["reason"] == "unsupported_section" and calls == []

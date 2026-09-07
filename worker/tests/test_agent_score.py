@@ -83,3 +83,11 @@ def test_bbox_rule_has_float32_rounding_margin():
     assert S.within_bbox_tol(0.005) and S.within_bbox_tol(0.005001) and S.within_bbox_tol(0.0051)
     assert not S.within_bbox_tol(0.0052) and not S.within_bbox_tol(0.008)
     assert not S.within_bbox_tol(None)
+
+
+def test_feedback_role_label_comes_from_section_meta():
+    """역할 라벨은 섹션 메타에서 온다 — 격벽 전용 분기가 아니다(M7 D2)."""
+    from m3d.agent import sections_meta as M
+    assert S.node_role("FRM", "AB1_S5_FRM07_VSL", ModelSpec()) == M.role_of("FRM", "AB1_S5_FRM07_VSL") == "수직보강재"
+    assert S.node_role("BRG", "AB1_S5_BRG_P4_1_SOLE", ModelSpec()) == "솔플레이트"
+    assert S.node_role("SP04", "AB1_S5_SP04_TF", ModelSpec()) == "상면판"

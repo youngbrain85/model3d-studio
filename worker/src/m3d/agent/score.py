@@ -6,6 +6,7 @@ from pathlib import Path
 
 import trimesh
 
+from m3d.agent import sections_meta
 from m3d.model import compare, measure, sections, selfcheck
 from m3d.model.builder import Builder
 from m3d.model.render import load_nodes
@@ -21,10 +22,8 @@ def within_bbox_tol(dev_m) -> bool:
 
 
 def node_role(code: str, node: str, spec: ModelSpec) -> str | None:
-    """노드 → 부재 역할 라벨(피드백용, M6 잡 2 교훈). DIA: 01·마지막 = 지점 격벽, 나머지 = 일반 격벽."""
-    if code == "DIA" and node.startswith("AB1_S5_DIA") and node[-2:].isdigit():
-        return "지점 격벽" if int(node[-2:]) in (1, spec.diaphragm.n_cell + 1) else "일반 격벽"
-    return None
+    """노드 → 부재 역할 라벨(피드백용). 표는 sections_meta 에 있다(M7 D2)."""
+    return sections_meta.role_of(code, node)
 
 
 def load_named(glb: Path) -> dict[str, trimesh.Trimesh]:

@@ -11,6 +11,7 @@ from pathlib import Path
 import psycopg
 from PIL import Image
 
+from m3d.agent import sections_meta
 from m3d.config import Config
 from m3d.reading.crops import mm_bbox_to_px, render_crop
 from m3d.reading.inputs import resize_for_vision
@@ -18,7 +19,7 @@ from m3d.reading.sheet import PageRef, list_pages
 
 Image.MAX_IMAGE_PIXELS = None
 
-SECTION_PATTERNS = {"DIA": r"다이아프램|격벽|DIAP|개구|문턱|잭업|수직보강"}
+SECTION_PATTERNS = {c: m.pattern for c, m in sections_meta.SECTIONS.items() if m.pattern}
 CONTEXT_MM = 120.0
 MAX_IMAGES = 8
 LONG_SIDE = 1400

@@ -99,3 +99,12 @@ def test_bundle_system_carries_stiffener_conventions_from_kb():
     b = C.section_bundle("P4P5/DIA", spec_dict=ModelSpec().model_dump(), sources={}, evidence=[], crops=[])
     assert "보강재 방향 규약" in b["system"] and "편측 부착 단순화" in b["system"]
     assert "[A4]·[A5]" in b["system"] and "노드 bbox 는 판+보강재 전체 범위" in b["system"]
+
+
+def test_section_patterns_come_from_meta_and_hst_has_none():
+    """크롭 정규식은 메타에서 온다; HST 는 판독 근거가 없어 패턴이 없다(M7 D9)."""
+    from m3d.agent import crops as K2
+    from m3d.agent import sections_meta as M
+    assert K2.SECTION_PATTERNS["DIA"] == M.SECTIONS["DIA"].pattern
+    assert set(K2.SECTION_PATTERNS) == {c for c, m in M.SECTIONS.items() if m.pattern}
+    assert "HST" not in K2.SECTION_PATTERNS

@@ -14,6 +14,7 @@ from m3d.agent import crops as agent_crops
 from m3d.agent import critique as agent_critique
 from m3d.agent import sandbox
 from m3d.agent import score as agent_score
+from m3d.agent import sections_meta as agent_sections_meta
 from m3d.agent.schema import AgentOut, validate_agent_out
 from m3d.config import Config
 from m3d.model import io as model_io
@@ -115,10 +116,10 @@ def run_job(cfg: Config, dataset: str, job: dict, emit, *, llm=None, scorer=None
     publisher = publisher or _default_publisher
     critic = critic or agent_critique.render_views
     segment, code = job["section_key"].split("/")
-    pattern = agent_crops.SECTION_PATTERNS.get(code)
-    if pattern is None:
+    if agent_sections_meta.meta(code) is None:
         emit("error", f"지원하지 않는 섹션: {job['section_key']}")
         return {"pass": False, "reason": "unsupported_section", "attempts": 0, "cost_usd": 0.0, "assumptions": [], "questions": []}
+    pattern = agent_crops.SECTION_PATTERNS.get(code)          # None 이면 크롭 없이 진행(HST, M7 D9)
     raw = model_io.load_modelspec_raw(cfg, dataset)
     spec, sources = ModelSpec.model_validate(raw["spec"]), raw.get("sources", {})
     ref_dir = Path(ref_dir) if ref_dir else model_io.model_dir(cfg, dataset)
@@ -128,7 +129,7 @@ def run_job(cfg: Config, dataset: str, job: dict, emit, *, llm=None, scorer=None
     work = model_io.model_dir(cfg, dataset) / "agent" / str(job["id"])
     (work / "agent").mkdir(parents=True, exist_ok=True)
     if evidence is None:
-        evidence = agent_crops.fetch_evidence(cfg, dataset, pattern)
+        evidence = agent_crops.fetch_evidence(cfg, dataset, pattern) if pattern else []
     if crops is None:
         crops = agent_crops.section_crops(cfg, dataset, evidence, work / "agent" / "crops")
     emit("info", f"입력: 판독 근거 {len(evidence)}건, 크롭 {len(crops)}장")
