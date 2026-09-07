@@ -50,3 +50,26 @@ def test_zone_loft_concatenates_segments_watertight_each():
         return geom.rect(-w, w, 0, 1)
     m = geom.zone_loft(0.0, 4.0, poly_fn, breaks=[2.0], para_ranges=[], checks=[])
     assert m.volume > 0 and len(m.faces) > 12
+
+
+def test_loft_normalizes_winding_and_repeated_closing_point():
+    """폴리곤 방향이 반대이거나 첫 점이 끝에 다시 있어도 닫힌 솔리드를 만든다(M7 SLAB 3회 실패 원인).
+
+    ear_clip 은 CCW 전제라 CW 입력이면 캡이 뒤집혀 조용히 수밀이 깨졌다.
+    """
+    from m3d.model.geom import loft, rect
+    p = rect(-1, 1, -1, 1)
+    ccw = loft([(0.0, p), (1.0, p)])
+    cw = loft([(0.0, list(reversed(p))), (1.0, list(reversed(p)))])
+    dup = loft([(0.0, p + [p[0]]), (1.0, p + [p[0]])])
+    for m, name in ((ccw, "ccw"), (cw, "cw"), (dup, "dup")):
+        assert m.is_watertight, name
+        assert abs(m.volume - 4.0) < 1e-9, name       # 2×2 단면 × 높이 1
+
+
+def test_loft_handles_concave_polygon_either_winding():
+    from m3d.model.geom import loft
+    notch = [(-2, 0), (-1, 0), (-1, 0.5), (1, 0.5), (1, 0), (2, 0), (2, 1), (-2, 1)]
+    for poly in (notch, list(reversed(notch))):
+        m = loft([(0.0, poly), (1.0, poly)])
+        assert m.is_watertight and abs(m.volume - 3.0) < 1e-9

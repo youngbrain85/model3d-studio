@@ -54,8 +54,27 @@ def ear_clip(poly: Poly) -> list[tuple[int, int, int]]:
     return tris
 
 
+def signed_area(poly: Poly) -> float:
+    """폴리곤 부호 면적 — 양수면 CCW."""
+    return 0.5 * sum(poly[i][0] * poly[(i + 1) % len(poly)][1] - poly[(i + 1) % len(poly)][0] * poly[i][1]
+                     for i in range(len(poly)))
+
+
+def normalize_poly(poly: Poly) -> Poly:
+    """끝에 되풀이된 첫 점을 떼고 CCW 로 맞춘다.
+
+    ear_clip 은 CCW 를 전제하므로 CW 입력은 캡이 뒤집혀 조용히 수밀이 깨졌다(M7 SLAB 3회 실패).
+    올바른 입력에는 아무 영향이 없다(CCW 폴리곤을 CCW 로 두고, 중복 끝점이 없으면 그대로).
+    """
+    p = list(poly)
+    while len(p) > 3 and abs(p[0][0] - p[-1][0]) < 1e-12 and abs(p[0][1] - p[-1][1]) < 1e-12:
+        p.pop()
+    return p if signed_area(p) >= 0 else list(reversed(p))
+
+
 def loft(stations: list[tuple[float, Poly]]) -> trimesh.Trimesh:
-    """stations = [(z, [(x,y),...]), ...] (동일 꼭짓점 수, CCW) → 닫힌 솔리드."""
+    """stations = [(z, [(x,y),...]), ...] (동일 꼭짓점 수) → 닫힌 솔리드. 폴리곤 방향·중복 끝점은 알아서 맞춘다."""
+    stations = [(z, normalize_poly(poly)) for z, poly in stations]
     ns = len(stations)
     n = len(stations[0][1])
     verts = []
