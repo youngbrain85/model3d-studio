@@ -52,3 +52,12 @@ def test_node_names_reads_reference_section(tmp_path):
     assert names == ["AB1_S5_SP04_BF", "AB1_S5_SP04_TF", "AB1_S5_SP04_WEB_L", "AB1_S5_SP04_WEB_R"]
     assert len(M.node_names(tmp_path, "P4P5", "FRM")) == 150
     assert len(M.node_names(tmp_path, "P4P5", "WG")) == 156
+
+
+def test_sections_with_conventions_carry_notes():
+    """이름만으로는 알 수 없는 규약(좌우 인덱스·존 이름·체인 중심)은 메타의 notes 로 준다(M7 배치 2)."""
+    assert "−bearing.x" in M.SECTIONS["BRG"].notes and "+bearing.x" in M.SECTIONS["BRG"].notes
+    assert "MA/MB" in M.SECTIONS["RIB"].notes and "지점존" in M.SECTIONS["RIB"].notes
+    assert "중심" in M.SECTIONS["CS"].notes and "seg" in M.SECTIONS["CS"].notes
+    assert "offset" in M.SECTIONS["FRM"].notes and "dmin" in M.SECTIONS["FRM"].notes
+    assert M.SECTIONS["SP04"].notes == ""          # 규약이 필요 없는 섹션은 빈 문자열

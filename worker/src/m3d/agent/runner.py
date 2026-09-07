@@ -69,6 +69,14 @@ def _has_colors(m: trimesh.Trimesh) -> bool:
     return m.visual.kind in ("face", "vertex")
 
 
+def _boundary_edges(m: trimesh.Trimesh) -> int:
+    """한 면에만 붙은 모서리 수 — 0 이면 닫힌 솔리드다. 수밀 실패를 고칠 수 있게 숫자로 알려 준다(M7)."""
+    try:
+        return int(len(m.edges) - 2 * len(m.face_adjacency))
+    except Exception:      # noqa: BLE001 — 진단 실패가 검증을 막으면 안 된다
+        return -1
+
+
 def _validate(named) -> None:
     if not isinstance(named, dict) or not named:
         raise RuntimeError("반환값은 비어 있지 않은 dict[str, Trimesh] 여야 한다")
@@ -83,7 +91,9 @@ def _validate(named) -> None:
         if len(m.faces) == 0:
             problems.append(f"{name}: 면 없음")
         elif not m.is_watertight:
-            problems.append(f"{name}: 수밀 아님(loft/extrude/box_prism 으로 닫힌 솔리드를 만들 것)")
+            problems.append(f"{name}: 수밀 아님 — 면 {len(m.faces)}개, 경계 모서리 {_boundary_edges(m)}개, 조각 {m.body_count}개. "
+                            "단면 폴리곤이 자기교차하거나 같은 점이 연속으로 들어갔을 수 있다(첫 점을 끝에 다시 넣지 말 것). "
+                            "loft/extrude/box_prism 으로 닫힌 솔리드를 만들 것")
         if not _has_colors(m):
             problems.append(f"{name}: 버텍스 컬러 없음(geom.paint(mesh, ctx.COL_STEEL) 사용)")
     if problems:

@@ -110,3 +110,19 @@ def test_import_of_other_m3d_modules_still_blocked():
     for line in ("from m3d.model import builder", "import m3d.model.builder", "from m3d import config"):
         code = line + "\ndef build_section(spec, ctx):\n    return {}\n"
         assert any("import 금지" in v for v in sandbox.check_code(code)), line
+
+
+def test_watertight_error_says_how_the_mesh_is_broken():
+    """'수밀 아님' 만으로는 못 고친다 — 경계 모서리·조각 수를 함께 준다(M7 배치 2 SLAB)."""
+    import trimesh
+    from m3d.agent.runner import _validate
+    open_box = trimesh.creation.box(extents=(1, 1, 1))
+    open_box.update_faces([True] * (len(open_box.faces) - 2) + [False, False])   # 면 2개 제거 → 구멍
+    open_box.visual.face_colors = [0, 150, 168, 255]
+    try:
+        _validate({"AB1_S5_TEST": open_box})
+    except RuntimeError as exc:
+        msg = str(exc)
+    else:
+        raise AssertionError("수밀 아님을 잡지 못했다")
+    assert "수밀 아님" in msg and "경계 모서리" in msg and "자기교차" in msg

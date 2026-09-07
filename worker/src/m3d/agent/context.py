@@ -38,7 +38,9 @@ CODE_CONTRACT = """## 코드 계약
 - 최상위에 `def build_section(spec, ctx) -> dict[str, trimesh.Trimesh]` 를 정의한다. spec 은 ModelSpec 전체 dict(m 단위), ctx 는 위 본체 기하.
 - 노드명은 아래 '이 섹션의 노드' 목록과 **정확히** 같아야 한다(빠짐·추가 모두 채점 실패). 노드명 = 객체 DB 연결 키.
 - 모든 메시는 수밀(loft/extrude/box_prism 결과)이고 `geom.paint(mesh, ctx.COL_STEEL)` 로 색을 입힌다. 접합부는 ctx.INS 만큼 관통 삽입한다(공면 금지).
-- 허용 import: math, numpy, trimesh, m3d.model.geom. 파일·네트워크·다른 모듈 접근 금지. 단위 m, Y-up, 좌표계는 §1 규약.
+- 허용 import: math, numpy, trimesh, m3d.model.geom(`from m3d.model import geom` 도 된다). 파일·네트워크·다른 모듈 접근 금지. 단위 m, Y-up, 좌표계는 §1 규약.
+- geom 의 Poly 는 (x, y) 점들의 **닫힌 단순 폴리곤**이다: 자기교차 금지, 같은 점 연속 금지, 첫 점을 끝에 다시 넣지 말 것(자동으로 닫는다). 이 규칙을 어기면 loft/extrude 결과가 수밀이 아니게 되어 실행이 반려된다.
+- trimesh.creation.* 프리미티브는 **z 축 기준**이다(원기둥·원뿔의 축이 z). 이 모델은 Y-up 이므로 그대로 쓰면 축이 뒤바뀐다 — 회전 변환을 직접 걸거나, 되도록 툴킷(loft/extrude/box_prism)으로 만든다.
 - 코드 인자 spec 에는 **값만** 들어 있다: spec["diaphragm"]["spacing"] == 2.8 (float), spec["diaphragm"]["h_table"] == [[2.8, 3.739], ...].
   아래 'ModelSpec 발췌' 의 {"value", "source", "doc"} 포장은 출처·의미 표시용이며 코드에서는 ["value"] 로 접근하지 않는다. doc 의 [x]·[y]·[z] 는 그 성분이 뻗는 축이다.
 - 반복 판(격벽 등)은 두께 중심을 전역 체인 위치 z = z_p4 + k·간격 에 두고 판면은 두께의 절반(±t/2)만 z 로 뻗는다.
@@ -103,6 +105,8 @@ def section_block(code: str, names: list[str]) -> str:
              ", ".join(names)]
     if m and m.roles:
         lines.append("역할: " + " / ".join(f"{pat} → {lab}" for pat, lab in m.roles))
+    if m and m.notes:
+        lines.append("규약: " + m.notes)
     return "\n".join(lines)
 
 def section_bundle(section_key: str, *, spec_dict: dict, sources: dict, evidence: list[dict], crops: list[dict],

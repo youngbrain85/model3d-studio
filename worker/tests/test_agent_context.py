@@ -139,3 +139,15 @@ def test_bundle_carries_section_nodes_and_new_ctx_doc():
     assert "AB1_S5_SP04_WEB_R" in text and "정확히 이 이름들만" in text
     assert "ctx.y_deck_top(z)" in b["system"] and "ctx.zone_loft(" in b["system"] and "ctx.COL_CONC" in b["system"]
     assert "AB1_S5_DIA01 … AB1_S5_DIA26" not in b["system"]        # 격벽 전용 문장이 계약에서 빠졌다
+
+
+def test_section_block_includes_section_notes():
+    block = C.section_block("BRG", ["AB1_S5_BRG_P4_1_SOLE"])
+    assert "규약:" in block and "−x" in block
+
+
+def test_contract_warns_about_polygon_and_zup_primitives():
+    """수밀 실패(SLAB)·축 뒤바뀜(BRG)의 재발을 막는 문장(M7 배치 2)."""
+    b = C.section_bundle("P4P5/SLAB", spec_dict=ModelSpec().model_dump(), sources={}, evidence=[], crops=[])
+    assert "자기교차" in b["system"] and "첫 점을 끝에 다시 넣지" in b["system"]
+    assert "trimesh.creation" in b["system"] and "Y-up" in b["system"]

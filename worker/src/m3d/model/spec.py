@@ -89,7 +89,7 @@ class FrameRow(BaseModel):
     name: str = Field(..., description="도면 타입명(F·F3·G1·D 등) — 형상에는 영향 없음")
     top_web: tuple[float, float] = Field(..., description="(t 두께[z], h 높이[y]) 상부 가로보 웹 — 강상판 하면에서 아래로 h")
     bot_web: tuple[float, float] = Field(..., description="(t 두께[z], h 높이[y]) 하부 가로보 웹 — 하판 상면에서 위로 h")
-    vstiff: tuple[float, float, float] = Field(..., description="(t 두께[z], w 폭[x, 웹 내면에서 안쪽], l 길이[y]) 프레임 수직보강재 — 내공 중앙 [A7]")
+    vstiff: tuple[float, float, float] = Field(..., description="(t 두께[z], w 폭[x, 웹 내면에서 안쪽], l 길이[y]) 프레임 수직보강재 — l 은 내공 높이가 아니라 이 표의 값 그대로이고, 내공 중앙(상·하판 중점)에 ±l/2 로 놓는다 [A7]")
     top_flange_t: float | None = Field(None, description="상부 플랜지 두께(m, y) — None 이면 상부 웹 두께와 같게 본다 [A6]")
 
 
@@ -152,12 +152,12 @@ class WG(BaseModel):
     fl_w: float = Field(0.3, description="가로보 플랜지 폭(m, z)")
     niche_r: float = Field(0.3, description="니치 원호 반지름(m) — 웹 부착부 하단 곡선")
     knee: tuple[float, float] = Field((3.9, 0.482),
-                                      description="(x 웹면에서 거리[x], y crown 아래 깊이[y]) 하플랜지 절선점 — 여기서 하면 기울기가 꺾인다")
+                                      description="(x 웹 외면에서 거리[x], y 강상판 상면 ctx.y_deck_top 아래 깊이[y]) 하플랜지 절선점 겸 스트럿 상단 작업점")
     tip_depth: float = Field(0.424, description="선단 블록 춤(m, y) — 외측빔 CS 춤과 같다")
     strut_size: float = Field(0.3, description="스트럿 단면 한 변(m) — 정사각 단면")
     strut_angle_deg: float = Field(28.222, description="스트럿 축 각도(도) 검산값 — 참조 빌더는 형상에 쓰지 않는다(각도는 strut_lower 와 가로보 부착점에서 나온다)")
     strut_lower: tuple[float, float] = Field((0.302, 2.413),
-                                             description="(x 웹면에서 거리[x], y 강상판 하면 아래 깊이[y]) 스트럿 하단 부착점")
+                                             description="(x 웹 외면에서 거리[x], y 강상판 상면 ctx.y_deck_top 아래 깊이[y]) 스트럿 하단 작업점 — 스트럿은 이 점에서 knee 점까지 뻗는다(x 로 3.6m 넘게 눕는 긴 부재)")
     bracket: tuple[float, float, float] = Field((0.35, 2.17, 2.70),
                                                 description="(t 두께[z], h 높이[y], w 폭[x]) 웹 부착 브래킷")
 
@@ -168,7 +168,7 @@ class CS(BaseModel):
     web_t: float = Field(0.012, description="외측빔 웹 두께(m, x)")
     fl_w: float = Field(0.3, description="외측빔 플랜지 폭(m, x)")
     fl_t: float = Field(0.012, description="외측빔 플랜지 두께(m, y)")
-    seg: float = Field(2.8, description="세그먼트 길이(m, z) — 가로보 간격과 같아 가로보 1쌍마다 좌·우 1세그씩")
+    seg: float = Field(2.8, description="세그먼트 길이(m, z) — 가로보 간격과 같다. 각 세그는 그 가로보의 체인 위치를 **중심**으로 ±seg/2 이고 받침선 밖은 잘린다")
 
 
 class Slab(BaseModel):

@@ -22,6 +22,7 @@ class SectionMeta:
     rep_nodes: tuple[str, ...]               # 자기 렌더 근접 뷰의 대표 노드
     roles: tuple[tuple[str, str], ...]       # (노드명 정규식, 역할 라벨) — 앞에서부터 첫 일치
     spec_keys: tuple[str, ...]               # 스펙 발췌에 넣을 하위 모델 (공통 coord·box 는 항상 추가)
+    notes: str = ""                          # 이름만으로는 알 수 없는 섹션 규약(좌우 인덱스·존 이름·체인 중심 등)
 
 
 SECTIONS: dict[str, SectionMeta] = {m.code: m for m in (
@@ -45,24 +46,37 @@ SECTIONS: dict[str, SectionMeta] = {m.code: m for m in (
                 ("AB1_S5_BRG_P4_1_BODY",),
                 ((r"_SOLE$", "솔플레이트"), (r"_BODY$", "받침 본체"), (r"_MORTAR$", "무수축 모르타르"),
                  (r"_BLOCK$", "받침 블록")),
-                ("bearing",)),
+                ("bearing",),
+                "P4_1·P5_1 은 x = −bearing.x, P4_2·P5_2 는 +bearing.x (번호 1 이 −x 쪽이다). "
+                "부품은 해당 받침선의 하판 하면(ctx.y_bot_out)에서 아래로 SOLE → BODY → MORTAR → BLOCK 순으로 쌓인다."),
     SectionMeta("FRM", "개방 프레임", r"프레임|개방|가로보|수직보강재|FRAME|브레이싱",
                 ("AB1_S5_FRM01_TRW",),
                 ((r"_TRW$", "상부 웹"), (r"_TRF$", "상부 플랜지"), (r"_BRW$", "하부 웹"),
                  (r"_BRF$", "하부 플랜지"), (r"_VS[LR]$", "수직보강재")),
-                ("frame", "diaphragm")),
+                ("frame", "diaphragm"),
+                "FRM<k>(k=01..25) 의 z = z_p4 + frame.offset + (k−1)·diaphragm.spacing — 격벽 사이마다 하나. "
+                "규격은 그 프레임의 dmin(양 받침선까지 최소 거리)이 d_list 에 든 frame.rows 행을 골라 쓴다. VSL 은 −x 쪽, VSR 은 +x 쪽 웹 내면."),
     SectionMeta("RIB", "종리브", r"종리브|리브|U-?리브|RIB",
                 ("AB1_S5_RIB_TP4_1",),
                 ((r"_RIB_T", "상판 리브"), (r"_RIB_B", "하판 리브")),
-                ("rib",)),
+                ("rib",),
+                "이름의 존 구분: T=상판(강상판 아래), B=하판(하판 위). P4/P5 = 그 받침선 쪽 지점존, "
+                "X4/X5 = 전이 구간(지점존 열 + 중앙존 열을 함께 둔다), MA/MB·M = 중앙존. "
+                "중앙존이 MA·MB 로 갈리는 것은 SP04 현장이음선 z = z_p4 + box.z_sp04_offset 에서 끊기 때문이다(MA 가 P4 쪽). "
+                "하판 지점존이 BP4A·BP4B 로 갈리는 것도 같은 이음선 때문이다. 끝 숫자는 x 열 번호(중심 대칭 순서)."),
     SectionMeta("CS", "외측빔", r"외측빔|연단|CS|가로보 선단",
                 ("AB1_S5_CS096L",),
                 ((r"CS\d+L$", "좌(보도측)"), (r"CS\d+R$", "우")),
-                ("cs", "wg")),
+                ("cs", "wg"),
+                "번호는 가로보와 같다(wg.first_no 부터 체인 순서). 각 세그는 그 체인 위치를 **중심**으로 ±cs.seg/2 이고 받침선 밖은 잘린다. "
+                "x 위치는 가로보 선단(ctx.x_web + wg.length), 상면은 가로보 선단 상플랜지 상면. L 은 x<0, R 은 x>0."),
     SectionMeta("WG", "외측가로보", r"외측가로보|가로보|캔틸레버|스트럿|니치|WG",
                 ("AB1_S5_WG096L",),
                 ((r"_ST$", "스트럿"), (r"_BR$", "브래킷"), (r"WG\d+[LR]$", "가로보 본체")),
-                ("wg", "slab")),
+                ("wg", "slab"),
+                "L 은 x<0(보도측), R 은 x>0 — 좌우 대칭이다. 번호는 wg.first_no 부터 격벽 체인 순서. "
+                "_ST 스트럿은 아래 작업점 (x_web + strut_lower[0], y_deck_top − strut_lower[1]) 에서 "
+                "위 작업점 (x_web + knee[0], y_deck_top − knee[1]) 까지 뻗는 I형 부재라 x 로 길게 눕는다."),
 )}
 
 

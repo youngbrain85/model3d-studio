@@ -151,3 +151,10 @@ def test_center_barrier_description_gives_its_position():
     """'중앙 방호벽' 은 x=0 이 아니라 보도 경계에 있다 — 이름만 보면 반드시 틀린다."""
     d = __import__("m3d.model.spec", fromlist=["Slab"]).Slab.model_fields["center_barrier"].description
     assert "보도" in d and "x=0" in d
+
+
+def test_cs_seg_and_frame_vstiff_descriptions_carry_the_convention():
+    """세그먼트는 체인 '중심', 수직보강재 길이는 내공 높이가 아니다(M7 배치 2 CS·FRM)."""
+    from m3d.model.spec import CS, FrameRow
+    assert "중심" in CS.model_fields["seg"].description
+    assert "내공 높이가 아니라" in FrameRow.model_fields["vstiff"].description
