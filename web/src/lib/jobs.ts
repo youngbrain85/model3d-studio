@@ -14,11 +14,16 @@ const REASON_LABEL: Record<string, string> = {
 };
 const STATUS_LABEL: Record<JobStatus, string> = { queued: '대기', running: '실행 중', done: '완료', failed: '실패' };
 
-export function jobPayload(p: { projectId: string; sectionKey: string; request: string; parentJobId: string | null }): JobInsert {
+export const DEFAULT_BUDGET_USD = 5;                          // DB 기본값과 같다(0006_jobs.sql)
+const BUDGET_RANGE: [number, number] = [0.5, 50];
+
+export function jobPayload(p: { projectId: string; sectionKey: string; request: string; parentJobId: string | null; budgetUsd?: number }): JobInsert {
   if (!SECTION_RE.test(p.sectionKey)) throw new RangeError(`섹션 키 형식 오류: ${p.sectionKey}`);
   const request = p.request.trim();
   if (request.length > 2000) throw new RangeError('요청은 2,000자 이내');
-  return { project_id: p.projectId, kind: 'model-section', section_key: p.sectionKey, request, parent_job_id: p.parentJobId };
+  const budget = p.budgetUsd ?? DEFAULT_BUDGET_USD;
+  if (!Number.isFinite(budget) || budget < BUDGET_RANGE[0] || budget > BUDGET_RANGE[1]) throw new RangeError(`예산 상한은 ${BUDGET_RANGE[0]}~${BUDGET_RANGE[1]} 달러`);
+  return { project_id: p.projectId, kind: 'model-section', section_key: p.sectionKey, request, parent_job_id: p.parentJobId, budget_usd: budget };
 }
 
 export function isActive(job: JobRow): boolean {

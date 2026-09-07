@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AGENT_SECTIONS, isActive, jobPayload, jobSummary, type JobRow } from './jobs';
+import { AGENT_SECTIONS, DEFAULT_BUDGET_USD, isActive, jobPayload, jobSummary, type JobRow } from './jobs';
 
 const job = (over: Partial<JobRow>): JobRow => ({
   id: 'j', project_id: 'p', kind: 'model-section', section_key: 'P4P5/DIA', request: '', parent_job_id: null, status: 'queued',
@@ -8,16 +8,23 @@ const job = (over: Partial<JobRow>): JobRow => ({
 });
 
 describe('jobPayload', () => {
-  it('정상 — request trim, parent 선택', () => {
+  it('정상 — request trim, parent 선택, 예산 기본 5', () => {
     expect(jobPayload({ projectId: 'p', sectionKey: 'P4P5/DIA', request: ' 개구 1.4 ', parentJobId: null }))
-      .toEqual({ project_id: 'p', kind: 'model-section', section_key: 'P4P5/DIA', request: '개구 1.4', parent_job_id: null });
-    expect(jobPayload({ projectId: 'p', sectionKey: 'P4P5/DIA', request: '', parentJobId: 'j0' }).parent_job_id).toBe('j0');
+      .toEqual({ project_id: 'p', kind: 'model-section', section_key: 'P4P5/DIA', request: '개구 1.4', parent_job_id: null, budget_usd: 5 });
+    expect(jobPayload({ projectId: 'p', sectionKey: 'P4P5/DIA', request: '', parentJobId: 'j0', budgetUsd: 9.39 }))
+      .toMatchObject({ parent_job_id: 'j0', budget_usd: 9.39 });
+  });
+  it('예산 상한은 0.5~50 달러', () => {
+    expect(() => jobPayload({ projectId: 'p', sectionKey: 'P4P5/DIA', request: '', parentJobId: null, budgetUsd: 0 })).toThrow(RangeError);
+    expect(() => jobPayload({ projectId: 'p', sectionKey: 'P4P5/DIA', request: '', parentJobId: null, budgetUsd: 60 })).toThrow(RangeError);
+    expect(() => jobPayload({ projectId: 'p', sectionKey: 'P4P5/DIA', request: '', parentJobId: null, budgetUsd: Number.NaN })).toThrow(RangeError);
   });
   it('섹션 키 형식·요청 길이 검증', () => {
     expect(() => jobPayload({ projectId: 'p', sectionKey: 'dia', request: '', parentJobId: null })).toThrow(RangeError);
     expect(() => jobPayload({ projectId: 'p', sectionKey: 'P4P5/DIA', request: 'x'.repeat(2001), parentJobId: null })).toThrow(RangeError);
   });
   it('M5 는 격벽만', () => { expect(AGENT_SECTIONS).toEqual(['DIA']); });
+  it('기본 예산 5', () => { expect(DEFAULT_BUDGET_USD).toBe(5); });
 });
 
 describe('jobSummary / isActive', () => {

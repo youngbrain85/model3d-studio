@@ -2,13 +2,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
-  Alert, Anchor, Badge, Box, Button, Checkbox, Group, Loader, Modal, Paper, ScrollArea, SegmentedControl, Select, Slider, Stack, Switch,
+  Alert, Anchor, Badge, Box, Button, Checkbox, Group, Loader, Modal, NumberInput, Paper, ScrollArea, SegmentedControl, Select, Slider, Stack, Switch,
   Text, Textarea, Title,
 } from '@mantine/core';
 
 import { JobPanel } from '../components/JobPanel';
 import { VerifyPanel } from '../components/VerifyPanel';
-import { AGENT_SECTIONS, createJob, fetchEvents, fetchJobs, isActive, jobPayload, type JobEventRow, type JobRow } from '../lib/jobs';
+import { AGENT_SECTIONS, DEFAULT_BUDGET_USD, createJob, fetchEvents, fetchJobs, isActive, jobPayload, type JobEventRow, type JobRow } from '../lib/jobs';
 import {
   fetchApprovals, fetchBuilds, fetchJson, fetchSections, signedUrls,
   type ApprovalRow, type BuildRow, type SectionRow,
@@ -49,6 +49,7 @@ export function Model() {
   const [openJob, setOpenJob] = useState<string | null>(null);
   const [askSection, setAskSection] = useState<SectionRow | null>(null);
   const [askRequest, setAskRequest] = useState('');
+  const [askBudget, setAskBudget] = useState<number>(DEFAULT_BUDGET_USD);
   const [error, setError] = useState<string | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const viewerRef = useRef<Viewer | null>(null);
@@ -145,10 +146,10 @@ export function Model() {
     return () => clearInterval(timer);
   }, [jobs, project, openJob]);
 
-  async function submitJob(section: SectionRow, request: string, parentJobId: string | null) {
+  async function submitJob(section: SectionRow, request: string, parentJobId: string | null, budgetUsd: number) {
     if (supabase === null || !project) return;
     try {
-      const row = await createJob(supabase, jobPayload({ projectId: project.id, sectionKey: section.section_key, request, parentJobId }));
+      const row = await createJob(supabase, jobPayload({ projectId: project.id, sectionKey: section.section_key, request, parentJobId, budgetUsd }));
       setJobs((prev) => [row, ...prev]);
       setOpenJob(row.id);
     } catch (e) {
@@ -260,7 +261,7 @@ export function Model() {
                 agentResult={buildJob?.result ?? null}
                 onRevise={(request) => {
                   const target = sections.find((s) => s.source === 'agent') ?? sections.find((s) => AGENT_SECTIONS.includes(s.code));
-                  if (target) void submitJob(target, request, buildJob?.id ?? null);
+                  if (target) void submitJob(target, request, buildJob?.id ?? null, buildJob?.budget_usd ?? askBudget);
                 }} />
             )}
           </Box>
@@ -270,10 +271,12 @@ export function Model() {
         <Stack gap="sm">
           <Text size="sm">Sonnet 5 가 이 섹션의 빌더 코드를 작성해 실행·채점합니다. 워커(`m3d worker`)가 켜져 있어야 처리됩니다. API 과금이 발생합니다.</Text>
           <Textarea label="요청 (선택)" placeholder="예: 개구 보강재를 양면에 붙여 줘" value={askRequest} onChange={(e) => setAskRequest(e.currentTarget.value)} autosize minRows={2} />
+          <NumberInput label="예산 상한 ($)" description="이 잡을 포함한 stage 누적 지출이 넘으면 호출 없이 실패 처리" value={askBudget} min={0.5} max={50} step={0.5}
+            decimalScale={2} onChange={(v) => setAskBudget(typeof v === 'number' ? v : Number(v) || DEFAULT_BUDGET_USD)} id="job-budget-input" />
           <Group justify="flex-end">
             <Button variant="default" size="xs" onClick={() => setAskSection(null)}>취소</Button>
             <Button size="xs" color="violet" id="create-job-button"
-              onClick={() => { if (askSection) void submitJob(askSection, askRequest, null); setAskSection(null); }}>잡 생성</Button>
+              onClick={() => { if (askSection) void submitJob(askSection, askRequest, null, askBudget); setAskSection(null); }}>잡 생성</Button>
           </Group>
         </Stack>
       </Modal>
