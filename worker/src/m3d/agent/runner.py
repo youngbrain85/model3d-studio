@@ -27,6 +27,8 @@ _real_import = _bi.__import__
 def _guarded_import(name, globals=None, locals=None, fromlist=(), level=0):
     if name.split(".")[0] in _ALLOWED_ROOTS or name == "m3d.model.geom" or name.startswith("m3d.model.geom."):
         return _real_import(name, globals, locals, fromlist, level)
+    if name == "m3d.model" and set(fromlist or ()) <= {"geom"}:       # from m3d.model import geom (M7)
+        return _real_import(name, globals, locals, fromlist, level)
     raise ImportError(f"import 금지: {name}")
 
 

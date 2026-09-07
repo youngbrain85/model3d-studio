@@ -155,7 +155,7 @@ class WG(BaseModel):
                                       description="(x 웹면에서 거리[x], y crown 아래 깊이[y]) 하플랜지 절선점 — 여기서 하면 기울기가 꺾인다")
     tip_depth: float = Field(0.424, description="선단 블록 춤(m, y) — 외측빔 CS 춤과 같다")
     strut_size: float = Field(0.3, description="스트럿 단면 한 변(m) — 정사각 단면")
-    strut_angle_deg: float = Field(28.222, description="스트럿 축 각도(도) — 수평에서 위로, 하단 부착점에서 가로보 쪽으로 올라간다")
+    strut_angle_deg: float = Field(28.222, description="스트럿 축 각도(도) 검산값 — 참조 빌더는 형상에 쓰지 않는다(각도는 strut_lower 와 가로보 부착점에서 나온다)")
     strut_lower: tuple[float, float] = Field((0.302, 2.413),
                                              description="(x 웹면에서 거리[x], y 강상판 하면 아래 깊이[y]) 스트럿 하단 부착점")
     bracket: tuple[float, float, float] = Field((0.35, 2.17, 2.70),
@@ -175,16 +175,16 @@ class Slab(BaseModel):
     """§8 슬래브 + 방호벽."""
     half_width: float = Field(7.85, description="슬래브 반폭(m, x) — 전폭 15.7")
     slope: float = Field(0.02, description="횡단 경사(무차원) — crown(x=0)에서 바깥으로 내려간다")
-    t_edge: float = Field(0.25, description="연단(선단) 슬래브 두께(m, y)")
-    t_web: float = Field(0.30, description="웹 위 슬래브 두께(m, y)")
-    t_crown: float = Field(0.348, description="crown 슬래브 두께(m, y) — coord.t_slab_crown 과 같다")
-    thickness_is_net: bool = Field(True, description="두께가 포장을 뺀 순두께라는 표시 [Q2]")
+    t_edge: float = Field(0.25, description="연단(선단) 슬래브 두께(m, y) — 참조 빌더는 형상에 쓰지 않는다(하면은 cant_drop 절선으로 만든다)")
+    t_web: float = Field(0.30, description="웹 위 슬래브 두께(m, y) — 참조 빌더는 형상에 쓰지 않는다(하면은 cant_drop 절선으로 만든다)")
+    t_crown: float = Field(0.348, description="crown 슬래브 두께(m, y) — 참조 빌더는 형상에 쓰지 않는다(같은 값인 coord.t_slab_crown 을 쓴다)")
+    thickness_is_net: bool = Field(True, description="두께가 포장을 뺀 순두께라는 표시 [Q2] — 참조 빌더는 형상에 쓰지 않는다")
     cant_drop: list[tuple[float, float]] = Field([(2.35, 0.330), (6.55, 0.418), (7.85, 0.398)],
                                                  description="[(x 중심에서 거리[x], crown 상면에서 내림[y])] 캔틸레버 하면 절선 — 이 점들을 이어 하면을 만든다")
     walk_width: float = Field(2.95, description="보도 폭(m, x) [Q3] — 보도측은 coord.walk_side_sign 이 정한다")
-    center_barrier: float = Field(0.45, description="중앙 방호벽 하부 폭(m, x)")
+    center_barrier: float = Field(0.45, description="보도-차도 경계 방호벽(노드 BARRIER_CTR)의 폭(m, x) — x=0 중앙이 아니다. 위치는 보도측(coord.walk_side_sign)의 연단 방호벽 안쪽 끝에서 walk_width 만큼 안쪽: 안쪽 끝 x = sign·(half_width − barrier[0] − walk_width), 거기서 차도 쪽으로 이 폭만큼")
     barrier: tuple[float, float, float] = Field((0.45, 0.33, 0.03),
-                                                description="(w 하부 폭[x], h 높이[y], cap 상부 축소량[x]) 방호벽 단면 — 슬래브 상면에서 위로 h")
+                                                description="(w 폭[x], h 높이[y], ch 상단 모따기[x·y 같은 값]) 연단 방호벽 단면 — 슬래브 상면에서 위로 h, 상단 두 모서리를 ch 만큼 깎는다")
 
 
 class SP04(BaseModel):
@@ -195,7 +195,7 @@ class SP04(BaseModel):
                                            description="(w 폭[x], l 길이[z], t 두께[y]) 하면 이음판 — 하판 하면(ctx.y_bot_out) 아래에 덧댄다")
     web: tuple[float, float, float] = Field((2.68, 0.58, 0.010),
                                             description="(h 높이[y], l 길이[z], t 두께[x]) 복부 이음판 — 웹 외면(±ctx.x_web) 바깥에 좌·우 1매씩")
-    setback: float = Field(0.157, description="이음선에서 판 중심까지 z 오프셋(m) [A17] — 이음선 z = z_p4 + box.z_sp04_offset")
+    setback: float = Field(0.157, description="도면 표기 뒷물림(m) [A17] — 참조 빌더는 형상에 쓰지 않는다: 네 판 모두 중심을 이음선 z = z_p4 + box.z_sp04_offset 에 둔다")
 
 
 class Bearing(BaseModel):

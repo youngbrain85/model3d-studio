@@ -148,7 +148,13 @@ def run_job(cfg: Config, dataset: str, job: dict, emit, *, llm=None, scorer=None
         bundle = agent_context.section_bundle(job["section_key"], spec_dict=spec.model_dump(), sources=sources, evidence=evidence,
                                               crops=crops, feedback=feedback, request=job.get("request") or "", prev_code=prev_code, critique=critique, node_list=node_list)
         emit("info", f"시도 {attempt}/{MAX_ATTEMPTS}: LLM 호출(이미지 {bundle['n_images']}장)")
-        out, usage = llm(cfg, dataset, bundle, {"job_id": str(job["id"]), "attempt": attempt, "section": job["section_key"]})
+        try:
+            out, usage = llm(cfg, dataset, bundle, {"job_id": str(job["id"]), "attempt": attempt, "section": job["section_key"]})
+        except ValueError as exc:      # 계약 위반·스키마 위반 — 잡을 죽이지 말고 그 시도만 실패로(M7 배치 1 BRG)
+            feedback, critique = f"출력 규약 위반:\n{exc}", None
+            attempts.append({"attempt": attempt, "ok": False, "error": str(exc)[:2000], "cost_usd": None})
+            emit("warn", f"시도 {attempt}: 출력 규약 위반 — {str(exc).splitlines()[0][:160]}")
+            continue
         cost += float(usage.get("cost_usd") or 0.0)
         (work / "agent" / f"attempt{attempt}.py").write_text(out.code, encoding="utf-8")
         res = sandbox.run_code(out.code, spec.model_dump(), work / "agent" / f"attempt{attempt}.glb")

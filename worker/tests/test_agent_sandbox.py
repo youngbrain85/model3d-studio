@@ -98,3 +98,15 @@ def test_section_context_hides_builder_internals():
     public = [n for n in vars(ctx) if not n.startswith("_")]
     assert "build" not in public and "s" not in public
     assert set(public) >= {"x_web", "z_p4", "z_p5", "span", "y_deck_top", "t_top", "COL_CONC"}
+
+
+def test_from_m3d_model_import_geom_is_allowed():
+    """`from m3d.model import geom` 은 정상 사용법이다 — 이걸 막으면 잡이 통째로 죽는다(M7 배치 1 BRG)."""
+    code = "from m3d.model import geom\ndef build_section(spec, ctx):\n    return {}\n"
+    assert sandbox.check_code(code) == []
+
+
+def test_import_of_other_m3d_modules_still_blocked():
+    for line in ("from m3d.model import builder", "import m3d.model.builder", "from m3d import config"):
+        code = line + "\ndef build_section(spec, ctx):\n    return {}\n"
+        assert any("import 금지" in v for v in sandbox.check_code(code)), line

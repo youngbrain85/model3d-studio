@@ -39,6 +39,9 @@ def check_code(code: str) -> list[str]:
                     bad.add(f"import 금지: {a.name}")
         elif isinstance(node, ast.ImportFrom):
             mod = node.module or ""
+            # `from m3d.model import geom` 은 정상 사용법 — 툴킷만 꺼내는 형태라 허용한다(M7)
+            if mod == "m3d.model" and {a.name for a in node.names} <= {"geom"}:
+                continue
             if not _import_ok(mod):
                 bad.add(f"import 금지: {mod}")
         elif isinstance(node, ast.Name) and node.id in FORBIDDEN_NAMES:

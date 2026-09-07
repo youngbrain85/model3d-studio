@@ -136,3 +136,18 @@ def test_tuple_fields_name_the_axis_each_component_extends():
                          (Bearing, "mortar"), (Bearing, "block"), (Slab, "barrier"), (WG, "knee")):
         d = model.model_fields[field].description
         assert any(ax in d for ax in ("[x]", "[y]", "[z]")), f"{model.__name__}.{field} 축 표기 없음: {d}"
+
+
+def test_unused_fields_say_they_are_not_used_for_geometry():
+    """참조 빌더가 형상에 쓰지 않는 값은 그렇다고 밝힌다 — 안 그러면 에이전트가 쓸 자리를 지어낸다(M7 배치 1 SP04·SLAB)."""
+    from m3d.model.spec import SP04, Slab, WG
+    for model, field in ((SP04, "setback"), (Slab, "t_edge"), (Slab, "t_web"), (Slab, "t_crown"),
+                         (Slab, "thickness_is_net"), (WG, "strut_angle_deg")):
+        d = model.model_fields[field].description
+        assert "형상에 쓰지 않는다" in d, f"{model.__name__}.{field}: {d}"
+
+
+def test_center_barrier_description_gives_its_position():
+    """'중앙 방호벽' 은 x=0 이 아니라 보도 경계에 있다 — 이름만 보면 반드시 틀린다."""
+    d = __import__("m3d.model.spec", fromlist=["Slab"]).Slab.model_fields["center_barrier"].description
+    assert "보도" in d and "x=0" in d

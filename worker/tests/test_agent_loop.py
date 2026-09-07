@@ -165,3 +165,21 @@ def test_loop_rejects_section_outside_meta(cfg, ref_dir, monkeypatch):
     r = L.run_job(cfg, "ds", _job(section_key="P4P5/BOX"), lambda lv, m: None, llm=llm, evidence=[], crops=[],
                   ref_dir=ref_dir, do_render=False)
     assert r["reason"] == "unsupported_section" and calls == []
+
+
+def test_loop_treats_contract_violation_as_attempt_not_job_death(cfg, ref_dir, monkeypatch):
+    """LLM 출력이 계약을 어기면 그 시도만 실패로 적고 피드백과 함께 다시 부른다(M7 배치 1 BRG)."""
+    calls = []
+
+    def llm(cfg, dataset, bundle, extra):
+        calls.append("\n".join(p["text"] for p in bundle["messages"][0]["content"] if p["type"] == "text"))
+        if len(calls) == 1:
+            raise ValueError("코드 계약 위반: import 금지: m3d.model")
+        return AgentOut(code=GOOD, assumptions=[], questions=[]), {"cost_usd": 0.1}
+
+    scorer, _ = _fake_scorer([True])
+    monkeypatch.setattr(L, "spent_usd", lambda cfg, ds, stage=L.STAGE: 0.0)
+    r = L.run_job(cfg, "ds", _job(), lambda lv, m: None, llm=llm, scorer=scorer, publisher=_fake_publisher({}),
+                  evidence=[], crops=[], ref_dir=ref_dir, do_render=False)
+    assert r["pass"] is True and r["attempts"] == 2
+    assert "코드 계약 위반" in calls[1] and "import 금지" in calls[1]
