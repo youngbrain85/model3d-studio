@@ -16,7 +16,7 @@ from pathlib import Path
 import trimesh
 
 from m3d.model import geom
-from m3d.model.builder import COL_STEEL, INS, Builder
+from m3d.model.builder import COL_BRG, COL_CONC, COL_SOLE, COL_STEEL, INS, Builder
 from m3d.model.spec import ModelSpec
 
 NODE_RE = re.compile(r"^AB1_S5_[A-Z0-9_]+$")
@@ -38,16 +38,28 @@ SAFE_BUILTINS["__import__"] = _guarded_import
 SAFE_BUILTINS["__build_class__"] = _bi.__build_class__
 
 
-class BoxContext:
-    """에이전트에 노출하는 본체 기하 (D2) — Builder 의 프로파일 함수와 상수만."""
+class SectionContext:
+    """에이전트에 노출하는 본체 기하 (M5 D2 → M7 D1 확장) — Builder 의 프로파일 함수·상수만.
+
+    본체(BOX)는 전 섹션의 주어진 조건이라 프로파일 전체를 준다. 격벽 전용 도우미(dia_z·dia_half_w)는 주지 않는다.
+    """
 
     def __init__(self, b: Builder):
         self.x_web = b.s.box.x_web
         self.z_p4, self.z_p5 = b.Z_P4, b.Z_P5
+        self.span = b.SPAN
         self.y_web_top, self.y_web_bot, self.h_box, self.t_web = b.y_web_top, b.y_web_bot, b.h_box, b.t_web
-        self.COL_STEEL = list(COL_STEEL)
+        self.el_road, self.y_deck_top, self.y_crown, self.y_bot_out = b.el_road, b.y_deck_top, b.y_crown, b.y_bot_out
+        self.t_top, self.t_bot = b.t_top, b.t_bot
+        self.COL_STEEL, self.COL_CONC = list(COL_STEEL), list(COL_CONC)
+        self.COL_BRG, self.COL_SOLE = list(COL_BRG), list(COL_SOLE)
         self.INS = INS
         self.geom = geom
+        self._b = b
+
+    def zone_loft(self, z0, z1, poly_fn):
+        """판두께 전이점에서 분절해 로프트한다(전이 계단면은 구간 캡). 종리브·수평보강재처럼 z 로 긴 부재에 쓴다."""
+        return self._b._zone_loft(z0, z1, poly_fn)
 
 
 def _has_colors(m: trimesh.Trimesh) -> bool:
@@ -80,7 +92,7 @@ def main(argv: list[str]) -> None:
     code_path, spec_path, out_glb = (Path(a) for a in argv[1:4])
     spec = ModelSpec.model_validate(json.loads(spec_path.read_text(encoding="utf-8")))
     b = Builder(spec)
-    ctx = BoxContext(b)
+    ctx = SectionContext(b)
     g = {"__builtins__": SAFE_BUILTINS, "__name__": "agent_code"}
     exec(compile(code_path.read_text(encoding="utf-8"), "agent_code.py", "exec"), g)   # noqa: S102 — 샌드박스 진입점
     fn = g.get("build_section")
