@@ -68,6 +68,8 @@ class Expect:
         self.X8 = self.cols(r.top_mid.cols, r.top_mid.pitch)
         self.Z_RIB_PIER = c.z_p4 + min(5.0, min(r.top_switch[0], r.bot_switch[0]) / 2)   # 지점존 대표점
         self.Z_RIB_MID = (c.z_p4 + c.z_p5) / 2
+        self.Z_RIB_TR_TOP = c.z_p4 + (r.top_switch[0] + r.top_switch[1]) / 2      # 전이 구간 대표점(상판)
+        self.Z_RIB_TR_BOT = c.z_p4 + (r.bot_switch[0] + r.bot_switch[1]) / 2      # 전이 구간 대표점(하판)
         self.N_WG = 2 * (n + 1)
         self.WG_TIP = b.x_web + s.wg.length
         self.WG_NO = s.wg.first_no + 1                            # 실측 대표: 두 번째 WG(P4+spacing)
@@ -358,6 +360,25 @@ def sec_diaphragms(W, E: Expect, ck: Checks, out: dict):
     out["격벽_상세"] = rows
 
 
+def sec_dia_stiffeners(W, E: Expect, ck: Checks, out: dict):
+    """§2 지점 격벽의 z 방향 두께 — 판 + 경간 안쪽 보강재 돌출 (M8: 정답 대조 없이 보강재 누락을 잡는다)."""
+    d = E.s.diaphragm
+    n = d.n_cell
+    exp = d.support_t + max(d.support_vstiff[1], d.support_jack[1])
+    meas = []
+    for k in (1, n + 1):
+        m = W.get("AB1_S5_DIA%02d" % k)
+        meas.append(float(m.bounds[1][2] - m.bounds[0][2]) if m is not None else float("nan"))
+    ck.add("지점 격벽 z 두께 2면 (§2 판 %s + 보강재 돌출 %s)"
+           % (_fmt(d.support_t * 1000), _fmt(max(d.support_vstiff[1], d.support_jack[1]) * 1000)),
+           [exp] * 2, meas, 0.02, "m")
+    ot, oh, ov, ol = d.open_stiff
+    exp_i = d.interior_t + max(oh, ov)
+    mid = W.get("AB1_S5_DIA%02d" % (n // 2 + 1))
+    ck.add("일반 격벽 z 두께 (§2 판 %s + 개구보강재 돌출 %s)" % (_fmt(d.interior_t * 1000), _fmt(max(oh, ov) * 1000)),
+           exp_i, float(mid.bounds[1][2] - mid.bounds[0][2]) if mid is not None else float("nan"), 0.01, "m")
+
+
 def sec_frames(W, E: Expect, ck: Checks, out: dict):
     names = sorted(W)
     frm = [nm for nm in names if "_FRM" in nm]
@@ -421,10 +442,66 @@ def sec_ribs(W, E: Expect, ck: Checks, out: dict):
     ck.add("종리브 %s 상판 x 위치 (§4 @%s)" % (lm, _fmt(r.top_mid.pitch * 1000)), E.cols(r.top_mid.cols, r.top_mid.pitch), tm, TOL, "m")
     ck.add("종리브 %s 하판 열수 (§4 중앙존 %d열)" % (lm, r.bot_mid.cols), r.bot_mid.cols, len(bm), 0, "열")
     ck.add("종리브 %s 하판 x 위치 (§4 @%s)" % (lm, _fmt(r.bot_mid.pitch * 1000)), E.cols(r.bot_mid.cols, r.bot_mid.pitch), bm, TOL, "m")
+    # 리브는 붙는 판면을 z 따라 따라가야 한다 — 한 단면만 맞고 양 끝이 안 맞으면 변단면을 무시한 것이다.
+    for nm, side, lbl in (("AB1_S5_RIB_BP5_1", "bot", "하판 P5 지점존"), ("AB1_S5_RIB_TP4_1", "top", "상판 P4 지점존")):
+        mr = W.get(nm)
+        if mr is None:
+            continue
+        z_lo, z_hi = float(mr.bounds[0][2]) + 0.3, float(mr.bounds[1][2]) - 0.3
+        meas, exp = [], []
+        for z0 in (z_lo, z_hi):
+            v = sect_z(mr, z0)
+            meas.append(float(v[:, 1].min()) if side == "bot" else float(v[:, 1].max()))
+            exp.append(E.web_bot(z0) if side == "bot" else E.web_top(z0))
+        ck.add("종리브 %s 판면 추종 (§4 양 끝 z 에서 판면 y)" % lbl, exp, meas, 0.01, "m")
     out["종리브_열"] = {lp.replace("−", "-") + "_상판_x": [round(v, 4) for v in tp], lp.replace("−", "-") + "_하판_x": [round(v, 4) for v in bp],
                         lm.replace("−", "-") + "_상판_x": [round(v, 4) for v in tm], lm.replace("−", "-") + "_하판_x": [round(v, 4) for v in bm]}
 
-    for nm, zone, lbl in (("AB1_S5_RIB_TP4_1", r.top_pier, "지점존 상판"), ("AB1_S5_RIB_BP4A_1", r.bot_pier, "지점존 하판")):
+    ck.add("종리브 스트립 수 (§4 존 전개 %d)" % E.N_RIB, E.N_RIB, len(ribs), 0, "개")
+    # 노드 번호와 열의 대응은 규약이다: X 존은 지점존 열 목록 다음에 중앙존 열 목록을 이어붙인 순서,
+    # 그 밖의 존은 그 존의 열을 x 오름차순으로. 값 집합이 맞아도 대응이 다르면 여기서 걸린다.
+    fam: dict[str, list[tuple[int, float]]] = {}
+    for nm in ribs:
+        mm = re.fullmatch(r"AB1_S5_RIB_([A-Z0-9]+?)_(\d+)", nm)
+        if mm:
+            b_ = W[nm].bounds
+            fam.setdefault(mm.group(1), []).append((int(mm.group(2)), float((b_[0][0] + b_[1][0]) / 2)))
+    x_tp, x_tm = E.cols(r.top_pier.cols, r.top_pier.pitch), E.cols(r.top_mid.cols, r.top_mid.pitch)
+    x_bp, x_bm = E.cols(r.bot_pier.cols, r.bot_pier.pitch), E.cols(r.bot_mid.cols, r.bot_mid.pitch)
+    expect_runs = {"TX4": [x_tp, x_tm], "TX5": [x_tp, x_tm], "BX4": [x_bp, x_bm], "BX5": [x_bp, x_bm],
+                   "TP4": [x_tp], "TP5": [x_tp], "TMA": [x_tm], "TMB": [x_tm],
+                   "BP4A": [x_bp], "BP4B": [x_bp], "BP5": [x_bp], "BM": [x_bm]}
+    n_bad, bad = 0, []
+    for name, items in sorted(fam.items()):
+        runs = expect_runs.get(name)
+        if runs is None:
+            continue
+        xs = [x for _i, x in sorted(items)]
+        i, ok = 0, True
+        for run in runs:
+            seg = xs[i:i + len(run)]
+            if len(seg) != len(run) or any(abs(a_ - b_) > TOL for a_, b_ in zip(seg, run)):
+                ok = False
+                break
+            i += len(run)
+        if not ok:
+            n_bad += 1
+            bad.append(name)
+    ck.add("종리브 번호 ↔ 열 대응 (§4 X 존은 지점존 열 다음 중앙존 열%s)" % ("" if not bad else " — 어긋난 군 " + ",".join(bad[:5])),
+           0, n_bad, 0, "군")
+    tt, bt = rib_columns(E.Z_RIB_TR_TOP)
+    ck.add("종리브 전이구간 상판 열수 (§4 지점존 %d + 중앙존 %d)" % (r.top_pier.cols, r.top_mid.cols),
+           r.top_pier.cols + r.top_mid.cols, len(tt), 0, "열")
+    tb, bb = rib_columns(E.Z_RIB_TR_BOT)
+    ck.add("종리브 전이구간 하판 열수 (§4 지점존 %d + 중앙존 %d)" % (r.bot_pier.cols, r.bot_mid.cols),
+           r.bot_pier.cols + r.bot_mid.cols, len(bb), 0, "열")
+    ck.add("종리브 전이구간 상판 x 위치 (§4 두 존의 열 합집합)",
+           sorted(set(E.cols(r.top_pier.cols, r.top_pier.pitch)) | set(E.cols(r.top_mid.cols, r.top_mid.pitch))),
+           sorted(tt), TOL, "m")
+    for nm, zone, lbl in (("AB1_S5_RIB_TP4_1", r.top_pier, "P4 지점존 상판"), ("AB1_S5_RIB_TP5_1", r.top_pier, "P5 지점존 상판"),
+                          ("AB1_S5_RIB_TMA_1", r.top_mid, "중앙존 상판"), ("AB1_S5_RIB_TMB_1", r.top_mid, "중앙존 상판(P5측)"),
+                          ("AB1_S5_RIB_BP4A_1", r.bot_pier, "P4 지점존 하판"), ("AB1_S5_RIB_BP5_1", r.bot_pier, "P5 지점존 하판"),
+                          ("AB1_S5_RIB_BM_1", r.bot_mid, "중앙존 하판")):
         mr = W.get(nm)
         if mr is None:
             continue
@@ -585,7 +662,7 @@ def sec_mesh_count(W, E: Expect, ck: Checks, out: dict):
 
 
 SECTIONS = [("bbox", "ASSEMBLY", sec_bbox), ("내공 H", "BOX", sec_h_profile), ("강상판 상면", "BOX", sec_deck_top),
-            ("격벽", "DIA", sec_diaphragms), ("프레임", "FRM", sec_frames), ("종리브", "RIB", sec_ribs),
+            ("격벽", "DIA", sec_diaphragms), ("격벽 보강재", "DIA", sec_dia_stiffeners), ("프레임", "FRM", sec_frames), ("종리브", "RIB", sec_ribs),
             ("WG·CS", "WG", sec_wg_cs), ("받침", "BRG", sec_bearings), ("슬래브·방호벽", "SLAB", sec_slab),
             ("이음판", "SP04", sec_sp04), ("수평보강재", "HST", sec_hstiff), ("메시 수", "ASSEMBLY", sec_mesh_count)]
 
